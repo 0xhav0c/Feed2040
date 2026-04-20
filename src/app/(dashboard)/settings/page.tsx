@@ -43,11 +43,12 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UsersAdminTab } from "@/components/settings/UsersAdminTab";
+import { OpenAIIcon, AnthropicIcon, OllamaIcon, TelegramIcon } from "@/components/icons/BrandIcons";
 
 const BASE_TABS = [
   { id: "general", label: "General", icon: User },
   { id: "ai", label: "AI Settings", icon: Sparkles },
-  { id: "telegram", label: "Telegram Bot", icon: Bot },
+  { id: "telegram", label: "Telegram Bot", icon: TelegramIcon },
   { id: "notifications", label: "Alerts", icon: Shield },
   { id: "data", label: "Import & Export", icon: ArrowRight },
   { id: "fever", label: "Fever API", icon: Wifi },
@@ -58,10 +59,10 @@ const ADMIN_TAB = { id: "users", label: "Users", icon: Users };
 type TabId = string;
 
 const PROVIDERS = [
-  { value: "openai", label: "OpenAI", icon: "🟢", description: "GPT-4o, GPT-4.1 models" },
-  { value: "anthropic", label: "Anthropic", icon: "🟣", description: "Claude Sonnet, Opus" },
-  { value: "ollama", label: "Ollama", icon: "🦙", description: "Local AI — free, private" },
-] as const;
+  { value: "openai", label: "OpenAI", icon: OpenAIIcon, color: "text-[#10a37f]", description: "GPT-4o, GPT-4.1 models" },
+  { value: "anthropic", label: "Anthropic", icon: AnthropicIcon, color: "text-[#d4a27f]", description: "Claude Sonnet, Opus" },
+  { value: "ollama", label: "Ollama", icon: OllamaIcon, color: "text-white", description: "Local AI — free, private" },
+];
 
 const PROVIDER_MODELS: Record<
   string,
@@ -1008,7 +1009,7 @@ function AISettingsTab() {
                       : "border-border hover:border-primary/30 hover:bg-muted/50"
                   )}
                 >
-                  <span className="text-3xl">{p.icon}</span>
+                  <p.icon size={32} className={p.color} />
                   <span className={cn("font-medium", isSelected && "font-semibold")}>{p.label}</span>
                   <span className="text-[11px] text-muted-foreground">{p.description}</span>
                   {ki ? (
@@ -1329,7 +1330,7 @@ function TelegramSettingsTab() {
     <div className="space-y-6">
       <Card className="rounded-2xl border border-border bg-card">
         <CardContent className="p-6">
-          <SectionTitle icon={Bot} title="Bot Token" description="Create a bot via @BotFather on Telegram" />
+          <SectionTitle icon={TelegramIcon} title="Bot Token" description="Create a bot via @BotFather on Telegram" />
           <SecretKeyInput
             label="Telegram Bot Token"
             description="Required to send digest messages"

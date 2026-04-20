@@ -14,12 +14,12 @@ import {
   ChevronRight,
   ChevronDown,
   Plus,
-  Bot,
   LogOut,
   User,
   FolderOpen,
   Sparkles,
 } from "lucide-react";
+import { TelegramIcon } from "@/components/icons/BrandIcons";
 import { FeedContextMenu } from "@/components/feed/FeedContextMenu";
 import { FeedEditDialog } from "@/components/feed/FeedEditDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -441,7 +441,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
               href="/settings?tab=telegram"
               className="flex items-center gap-3.5 rounded-xl px-4 py-2.5 text-[0.9rem] font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
             >
-              <Bot size={20} />
+              <TelegramIcon size={20} />
               <span>Telegram Bot</span>
             </Link>
           </div>
