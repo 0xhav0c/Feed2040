@@ -157,6 +157,29 @@ export async function setUserOllamaUrl(userId: string, url: string): Promise<voi
   });
 }
 
+export type BaseUrlName = "openaiBaseUrl" | "anthropicBaseUrl";
+
+export async function getUserBaseUrl(userId: string, field: BaseUrlName): Promise<string | null> {
+  try {
+    const record = await prisma.userApiKeys.findUnique({
+      where: { userId },
+      select: { [field]: true },
+    });
+    const val = record?.[field];
+    return (typeof val === "string" ? val : null) || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setUserBaseUrl(userId: string, field: BaseUrlName, url: string | null): Promise<void> {
+  await prisma.userApiKeys.upsert({
+    where: { userId },
+    create: { userId, [field]: url },
+    update: { [field]: url },
+  });
+}
+
 export async function resolveSecretKey(
   userId: string,
   keyName: UserApiKeyName,

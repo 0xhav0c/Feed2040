@@ -9,17 +9,11 @@ function isValidOrigin(req: NextRequest): boolean {
   const origin = req.headers.get("origin");
   const referer = req.headers.get("referer");
 
-  const appUrl = process.env.NEXTAUTH_URL || `http://localhost:${process.env.PORT || 3000}`;
-  let expectedHost: string;
-  try {
-    expectedHost = new URL(appUrl).host;
-  } catch {
-    expectedHost = "localhost:3000";
-  }
+  const requestHost = req.headers.get("host") || req.nextUrl.host;
 
   if (origin) {
     try {
-      return new URL(origin).host === expectedHost;
+      return new URL(origin).host === requestHost;
     } catch {
       return false;
     }
@@ -27,13 +21,12 @@ function isValidOrigin(req: NextRequest): boolean {
 
   if (referer) {
     try {
-      return new URL(referer).host === expectedHost;
+      return new URL(referer).host === requestHost;
     } catch {
       return false;
     }
   }
 
-  // No origin/referer — allow same-origin requests (non-browser clients)
   return true;
 }
 

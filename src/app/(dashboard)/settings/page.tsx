@@ -801,6 +801,8 @@ function AISettingsTab() {
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434/v1");
   const [ollamaStatus, setOllamaStatus] = useState<"unknown" | "connected" | "error">("unknown");
   const [ollamaTesting, setOllamaTesting] = useState(false);
+  const [openaiBaseUrl, setOpenaiBaseUrl] = useState("");
+  const [anthropicBaseUrl, setAnthropicBaseUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -859,6 +861,8 @@ function AISettingsTab() {
           setAutoSummarize(aiData.data.autoSummarize ?? false);
           const savedUrl = aiData.data.ollamaBaseUrl || "http://localhost:11434/v1";
           setOllamaBaseUrl(savedUrl);
+          setOpenaiBaseUrl(aiData.data.openaiBaseUrl || "");
+          setAnthropicBaseUrl(aiData.data.anthropicBaseUrl || "");
           if (p === "ollama") {
             testOllamaConnection(savedUrl);
           }
@@ -936,6 +940,10 @@ function AISettingsTab() {
         briefingEnabled, briefingTimes, briefingTimezone, briefingHours, briefingCategories,
       };
       if (provider === "ollama") payload.ollamaBaseUrl = ollamaBaseUrl;
+      if (openaiBaseUrl) payload.openaiBaseUrl = openaiBaseUrl;
+      else payload.openaiBaseUrl = null;
+      if (anthropicBaseUrl) payload.anthropicBaseUrl = anthropicBaseUrl;
+      else payload.anthropicBaseUrl = null;
       const res = await fetch("/api/settings/ai", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1043,6 +1051,18 @@ function AISettingsTab() {
               helpUrl={providerMeta[provider].helpUrl}
               helpLabel={providerMeta[provider].helpLabel}
             />
+            <Separator className="my-4" />
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Custom API URL <span className="text-muted-foreground font-normal">(optional)</span></label>
+              <p className="text-xs text-muted-foreground">Use a custom endpoint for {provider === "openai" ? "OpenAI-compatible" : "Anthropic-compatible"} APIs (e.g. Azure OpenAI, proxy, local gateway)</p>
+              <Input
+                type="url"
+                placeholder={provider === "openai" ? "https://api.openai.com/v1" : "https://api.anthropic.com"}
+                value={provider === "openai" ? openaiBaseUrl : anthropicBaseUrl}
+                onChange={(e) => provider === "openai" ? setOpenaiBaseUrl(e.target.value) : setAnthropicBaseUrl(e.target.value)}
+                className="rounded-xl font-mono text-sm"
+              />
+            </div>
           </CardContent>
         </Card>
       )}

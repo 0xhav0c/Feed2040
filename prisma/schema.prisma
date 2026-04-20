@@ -259,7 +259,9 @@ model NotificationRule {
 model UserApiKeys {
   id              String  @id @default(cuid())
   openaiApiKey    String? @db.Text
+  openaiBaseUrl   String?
   anthropicApiKey String? @db.Text
+  anthropicBaseUrl String?
   telegramBotToken String? @db.Text
   ollamaBaseUrl   String?
 

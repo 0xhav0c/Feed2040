@@ -32,7 +32,11 @@ Feed2040 aggregates your RSS feeds, uses AI to summarize and prioritize articles
 
 ## Screenshots
 
-> *Coming soon — Add your own screenshots to `public/screenshots/`*
+### Three-Panel Feed Reader
+![Feed Reader](public/screenshots/feed-reader.png)
+
+### AI-Powered Daily Briefing
+![Daily Briefing](public/screenshots/daily-briefing.png)
 
 ---
 

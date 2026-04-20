@@ -5,6 +5,7 @@ import {
   getSecretKey,
   resolveSecretKey,
   getUserOllamaUrl,
+  getUserBaseUrl,
   SETTING_KEYS,
 } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
@@ -158,14 +159,24 @@ export async function createProvider(
       ? await resolveSecretKey(userId, "anthropicApiKey", "ANTHROPIC_API_KEY")
       : await getSecretKey(SETTING_KEYS.ANTHROPIC_API_KEY, "ANTHROPIC_API_KEY");
     if (!apiKey) return null;
-    return new AnthropicProvider(new Anthropic({ apiKey, timeout: 60_000 }));
+    const baseURL = userId ? await getUserBaseUrl(userId, "anthropicBaseUrl") : null;
+    return new AnthropicProvider(new Anthropic({
+      apiKey,
+      timeout: 60_000,
+      ...(baseURL && { baseURL }),
+    }));
   }
 
   const apiKey = userId
     ? await resolveSecretKey(userId, "openaiApiKey", "OPENAI_API_KEY")
     : await getSecretKey(SETTING_KEYS.OPENAI_API_KEY, "OPENAI_API_KEY");
   if (!apiKey) return null;
-  return new OpenAIProvider(new OpenAI({ apiKey, timeout: 60_000 }));
+  const baseURL = userId ? await getUserBaseUrl(userId, "openaiBaseUrl") : null;
+  return new OpenAIProvider(new OpenAI({
+    apiKey,
+    timeout: 60_000,
+    ...(baseURL && { baseURL }),
+  }));
 }
 
 export const PROVIDER_MODELS: Record<string, { value: string; label: string }[]> = {

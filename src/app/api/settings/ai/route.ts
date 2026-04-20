@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { resolveSecretKey, getUserOllamaUrl, setUserOllamaUrl, getAppSetting } from "@/lib/settings";
+import { resolveSecretKey, getUserOllamaUrl, setUserOllamaUrl, getUserBaseUrl, setUserBaseUrl, getAppSetting } from "@/lib/settings";
 import { z } from "zod";
 
 const aiSettingsSchema = z.object({
@@ -11,6 +11,8 @@ const aiSettingsSchema = z.object({
   autoSummarize: z.boolean().optional(),
   language: z.string().min(2).optional(),
   ollamaBaseUrl: z.string().url().optional(),
+  openaiBaseUrl: z.string().url().optional().nullable(),
+  anthropicBaseUrl: z.string().url().optional().nullable(),
   briefingEnabled: z.boolean().optional(),
   briefingTimes: z.array(z.string()).optional(),
   briefingTimezone: z.string().optional(),
@@ -33,6 +35,8 @@ export async function GET(): Promise<NextResponse> {
     const openaiKey = await resolveSecretKey(userId, "openaiApiKey", "OPENAI_API_KEY");
     const anthropicKey = await resolveSecretKey(userId, "anthropicApiKey", "ANTHROPIC_API_KEY");
     const ollamaBaseUrl = await getUserOllamaUrl(userId) || await getAppSetting("ollama_base_url");
+    const openaiBaseUrl = await getUserBaseUrl(userId, "openaiBaseUrl");
+    const anthropicBaseUrl = await getUserBaseUrl(userId, "anthropicBaseUrl");
 
     if (!aiSettings) {
       return NextResponse.json({
@@ -45,6 +49,8 @@ export async function GET(): Promise<NextResponse> {
           openaiKeyConfigured: !!openaiKey,
           anthropicKeyConfigured: !!anthropicKey,
           ollamaBaseUrl: ollamaBaseUrl || "http://localhost:11434/v1",
+          openaiBaseUrl: openaiBaseUrl || "",
+          anthropicBaseUrl: anthropicBaseUrl || "",
           briefingEnabled: false,
           briefingTimes: [],
           briefingTimezone: "Europe/Istanbul",
@@ -64,6 +70,8 @@ export async function GET(): Promise<NextResponse> {
         openaiKeyConfigured: !!openaiKey,
         anthropicKeyConfigured: !!anthropicKey,
         ollamaBaseUrl: ollamaBaseUrl || "http://localhost:11434/v1",
+        openaiBaseUrl: openaiBaseUrl || "",
+        anthropicBaseUrl: anthropicBaseUrl || "",
         briefingEnabled: aiSettings.briefingEnabled,
         briefingTimes: aiSettings.briefingTimes,
         briefingTimezone: aiSettings.briefingTimezone,
@@ -92,6 +100,12 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
 
     if (data.ollamaBaseUrl) {
       await setUserOllamaUrl(session.user.id, data.ollamaBaseUrl);
+    }
+    if (data.openaiBaseUrl !== undefined) {
+      await setUserBaseUrl(session.user.id, "openaiBaseUrl", data.openaiBaseUrl || null);
+    }
+    if (data.anthropicBaseUrl !== undefined) {
+      await setUserBaseUrl(session.user.id, "anthropicBaseUrl", data.anthropicBaseUrl || null);
     }
 
     const aiSettings = await prisma.aISettings.upsert({

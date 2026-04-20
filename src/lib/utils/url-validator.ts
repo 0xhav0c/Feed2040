@@ -69,23 +69,8 @@ export function validateOllamaUrl(url: string): { valid: boolean; error?: string
 
   const hostname = parsed.hostname.toLowerCase();
 
-  // Allow localhost and 127.0.0.1 for local Ollama instances
-  const OLLAMA_ALLOWED = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
-  if (OLLAMA_ALLOWED.has(hostname)) {
-    return { valid: true };
-  }
-
-  // Block cloud metadata endpoints
   if (hostname === "169.254.169.254" || hostname === "metadata.google.internal") {
     return { valid: false, error: "This hostname is not allowed" };
-  }
-
-  if (isPrivateIP(hostname)) {
-    return { valid: false, error: "Private/internal IP addresses are not allowed" };
-  }
-
-  if (!hostname.includes(".") && !hostname.startsWith("[")) {
-    return { valid: false, error: "Single-label hostnames are not allowed" };
   }
 
   return { valid: true };
