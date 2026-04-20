@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.env.local
+.env.*.local
+.env
+*.md
+.cursor
+.vscode
+.turbo
+.vercel
+.husky
+coverage
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

@@ -1,0 +1,68 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-feed2040}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-feed2040}
+      POSTGRES_DB: ${POSTGRES_DB:-feed2040}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-feed2040}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER:-feed2040}:${POSTGRES_PASSWORD:-feed2040}@db:5432/${POSTGRES_DB:-feed2040}"
+      NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
+      NEXTAUTH_SECRET: "${NEXTAUTH_SECRET}"
+      AUTH_TRUST_HOST: "true"
+      REDIS_URL: "redis://redis:6379"
+      CRON_SECRET: "${CRON_SECRET}"
+      REFRESH_INTERVAL_MINUTES: "${REFRESH_INTERVAL_MINUTES:-15}"
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+volumes:
+  pgdata:
+  redisdata:
