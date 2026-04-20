@@ -35,8 +35,17 @@ Feed2040 aggregates your RSS feeds, uses AI to summarize and prioritize articles
 ### Three-Panel Feed Reader
 ![Feed Reader](public/screenshots/feed-reader.png)
 
+### AI Summary & Reading
+![AI Summary](public/screenshots/ai-summary.png)
+
+### Article Translation
+![Translate](public/screenshots/translate.png)
+
 ### AI-Powered Daily Briefing
 ![Daily Briefing](public/screenshots/daily-briefing.png)
+
+### AI Provider Settings
+![AI Settings](public/screenshots/ai-settings.png)
 
 ---
 
