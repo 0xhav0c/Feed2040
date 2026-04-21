@@ -39,9 +39,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # Migration SQL files + scripts
 COPY --from=builder /app/prisma/migrations ./prisma/migrations
-COPY --from=builder /app/scripts/migrate.js ./scripts/migrate.js
-COPY --from=builder /app/scripts/cron-refresh.js ./scripts/cron-refresh.js
-COPY --from=builder /app/scripts/telegram-poll.js ./scripts/telegram-poll.js
+COPY --from=builder /app/scripts ./scripts
 
 # Runtime node_modules (Prisma, pg, bcrypt, ioredis, telegraf, openai, dompurify)
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma

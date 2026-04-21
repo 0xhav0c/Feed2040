@@ -237,6 +237,16 @@ src/
 
 ---
 
+## Admin Tools
+
+### Reset Password
+
+```bash
+docker compose exec app node scripts/reset-password.js <username> <new-password>
+```
+
+---
+
 ## Updating
 
 ```bash
