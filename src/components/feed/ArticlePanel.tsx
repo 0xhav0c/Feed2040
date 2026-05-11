@@ -463,10 +463,16 @@ export const ArticlePanel = memo(function ArticlePanel({
       return match;
     });
 
-    // Fix relative URLs for images and links
+    // Fix protocol-relative URLs (//example.com/img.png → https://example.com/img.png)
+    html = html.replace(/(src|href)\s*=\s*(["'])(\/\/[^"']*?)\2/gi, (_match, attr: string, quote: string, path: string) => {
+      return `${attr}=${quote}https:${path}${quote}`;
+    });
+
+    // Fix relative URLs (/path/img.png and ./path/img.png)
     if (baseOrigin) {
-      html = html.replace(/(src|href)\s*=\s*["'](\/[^"']*?)["']/gi, (_, attr: string, path: string) => {
-        return `${attr}="${baseOrigin}${path}"`;
+      html = html.replace(/(src|href)\s*=\s*(["'])(\.?\/[^"']*?)\2/gi, (_match, attr: string, quote: string, path: string) => {
+        const cleanPath = path.startsWith("./") ? path.slice(1) : path;
+        return `${attr}=${quote}${baseOrigin}${cleanPath}${quote}`;
       });
     }
 

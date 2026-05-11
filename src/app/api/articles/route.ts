@@ -101,7 +101,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           enclosureUrl: true,
           enclosureType: true,
           enclosureDuration: true,
-          feed: { select: { id: true, title: true, faviconUrl: true, language: true } },
+          feed: { select: { id: true, title: true, url: true, siteUrl: true, faviconUrl: true, language: true } },
           bookmarks: {
             where: { userId: session.user.id },
             select: { id: true },
