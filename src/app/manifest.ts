@@ -23,23 +23,6 @@ export default function manifest(): MetadataRoute.Manifest {
         type: "image/svg+xml",
         purpose: "any",
       },
-      // PNG icons for broader PWA compatibility (generate from SVG sources above)
-      {
-        src: "/icons/icon-192.png",
-        sizes: "192x192",
-        type: "image/png",
-      },
-      {
-        src: "/icons/icon-512.png",
-        sizes: "512x512",
-        type: "image/png",
-      },
-      {
-        src: "/icons/icon-512.png",
-        sizes: "512x512",
-        type: "image/png",
-        purpose: "maskable",
-      },
     ],
   };
 }

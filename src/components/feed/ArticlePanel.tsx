@@ -243,7 +243,7 @@ export const ArticlePanel = memo(function ArticlePanel({
         img.removeEventListener("click", handler);
       });
     };
-  }, [fullContent, article]);
+  }, [fullContent, article?.id]);
 
   const handleBookmark = useCallback(() => {
     if (article) onBookmarkToggle(article.id);
@@ -836,7 +836,7 @@ export const ArticlePanel = memo(function ArticlePanel({
                     href={isSafeUrl(article.url) ? article.url : "#"}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all"
+                    className="inline-flex items-center gap-2 rounded-xl border border-primary bg-transparent px-5 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10 transition-all"
                   >
                     <ExternalLink size={14} />
                     Read on original site
