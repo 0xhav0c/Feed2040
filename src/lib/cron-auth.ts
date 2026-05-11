@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import crypto from "crypto";
 
 const WEAK_SECRETS = new Set([
   "please-change-this-secret-in-production",
@@ -21,13 +22,19 @@ export function getCronSecret(): string {
   return secret;
 }
 
+function timingSafeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 export function verifyCronAuth(req: NextRequest): boolean {
   try {
     const secret = getCronSecret();
+    const expected = `Bearer ${secret}`;
     const authHeader = req.headers.get("authorization");
-    if (authHeader === `Bearer ${secret}`) return true;
+    if (authHeader && timingSafeCompare(authHeader, expected)) return true;
     const webhookSecret = req.headers.get("x-webhook-secret");
-    if (webhookSecret === secret) return true;
+    if (webhookSecret && timingSafeCompare(webhookSecret, secret)) return true;
     return false;
   } catch {
     return false;

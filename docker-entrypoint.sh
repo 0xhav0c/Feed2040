@@ -47,8 +47,19 @@ echo ""
 
 # ── Start cron worker ─────────────────────────────
 node /app/scripts/cron-refresh.js &
+CRON_PID=$!
 
 # ── Start Telegram bot poller ─────────────────────
 node /app/scripts/telegram-poll.js &
+TELEGRAM_PID=$!
+
+# ── Graceful shutdown ─────────────────────────────
+cleanup() {
+  echo "🛑 Shutting down background workers..."
+  kill $CRON_PID $TELEGRAM_PID 2>/dev/null
+  wait $CRON_PID $TELEGRAM_PID 2>/dev/null
+  echo "✅ Workers stopped."
+}
+trap cleanup SIGTERM SIGINT
 
 exec "$@"

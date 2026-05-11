@@ -125,6 +125,7 @@ model Article {
   @@index([feedId])
   @@index([publishedAt])
   @@index([feedId, publishedAt])
+  @@index([createdAt])
   @@index([title])
 }
 
@@ -137,7 +138,7 @@ model Category {
   sortOrder Int     @default(0)
 
   parentId String?
-  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children Category[] @relation("CategoryTree")
 
   userId String
@@ -192,6 +193,7 @@ model ReadArticle {
 
   @@unique([userId, articleId])
   @@index([userId])
+  @@index([articleId])
 }
 
 model AppSettings {

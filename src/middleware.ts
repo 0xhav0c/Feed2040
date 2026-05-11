@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/register", "/setup", "/api/auth", "/api/setup", "/api/telegram", "/api/cron", "/api/internal", "/api/fever"];
+const PUBLIC_PATHS = ["/login", "/register", "/setup", "/api/auth", "/api/setup", "/api/telegram", "/api/cron", "/api/internal", "/api/fever", "/api/health"];
 
 const CSRF_EXEMPT_PREFIXES = ["/api/auth", "/api/setup", "/api/telegram/webhook", "/api/cron", "/api/internal", "/api/fever"];
 
@@ -27,7 +27,15 @@ function isValidOrigin(req: NextRequest): boolean {
     }
   }
 
-  return true;
+  // No Origin or Referer — only allow if the request has a session cookie
+  // (authenticated non-browser clients like API tools) or X-Requested-With header
+  const hasSession = !!(
+    req.cookies.get("authjs.session-token")?.value ||
+    req.cookies.get("__Secure-authjs.session-token")?.value
+  );
+  const hasXhr = !!req.headers.get("x-requested-with");
+
+  return hasSession || hasXhr;
 }
 
 export function middleware(req: NextRequest): NextResponse {

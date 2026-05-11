@@ -117,6 +117,10 @@ export default function CategoriesPage() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [deletingCat, setDeletingCat] = useState<{ id: string; name: string } | null>(null);
 
+  useEffect(() => {
+    document.title = "Categories | Feed2040";
+  }, []);
+
   const fetchCategories = useCallback(async () => {
     try {
       const res = await fetch("/api/categories");

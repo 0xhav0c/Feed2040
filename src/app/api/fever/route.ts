@@ -80,16 +80,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (url.searchParams.has("favicons")) {
     const feeds = await prisma.feed.findMany({
       where: { userId: user.id },
-      select: { id: true, faviconUrl: true },
+      select: { id: true },
     });
 
     return json({
       ...base,
       favicons: feeds.map((f) => ({
         id: hashId(f.id),
-        data: f.faviconUrl
-          ? `image/png;base64,`
-          : "image/gif;base64,R0lGODlhAQABAIAAAObm5gAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==",
+        data: "image/gif;base64,R0lGODlhAQABAIAAAObm5gAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==",
       })),
     });
   }
@@ -99,20 +97,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const maxId = url.searchParams.get("max_id");
     const withIds = url.searchParams.get("with_ids");
 
+    const articleSelect = {
+      id: true, title: true, url: true, author: true, content: true,
+      publishedAt: true, createdAt: true, feedId: true,
+    } as const;
+
     let articles;
     if (withIds) {
       const ids = withIds.split(",").map((i) => parseInt(i.trim(), 10));
+      const idSet = new Set(ids);
       const allArticles = await prisma.article.findMany({
         where: { feed: { userId: user.id } },
-        select: { id: true, title: true, url: true, author: true, content: true, publishedAt: true, createdAt: true, feedId: true },
+        select: articleSelect,
         orderBy: { createdAt: "desc" },
-        take: 10000,
+        take: 500,
       });
-      articles = allArticles.filter((a) => ids.includes(hashId(a.id)));
+      articles = allArticles.filter((a) => idSet.has(hashId(a.id)));
     } else {
       const allArticles = await prisma.article.findMany({
         where: { feed: { userId: user.id } },
-        select: { id: true, title: true, url: true, author: true, content: true, publishedAt: true, createdAt: true, feedId: true },
+        select: articleSelect,
         orderBy: { createdAt: "desc" },
         take: 50,
       });
@@ -125,19 +129,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const readSet = new Set(
-      (await prisma.readArticle.findMany({
-        where: { userId: user.id },
+    const [readRecords, bookmarkRecords] = await Promise.all([
+      prisma.readArticle.findMany({
+        where: { userId: user.id, articleId: { in: articles.map((a) => a.id) } },
         select: { articleId: true },
-      })).map((r) => r.articleId)
-    );
+      }),
+      prisma.bookmark.findMany({
+        where: { userId: user.id, articleId: { in: articles.map((a) => a.id) } },
+        select: { articleId: true },
+      }),
+    ]);
 
-    const bookmarkSet = new Set(
-      (await prisma.bookmark.findMany({
-        where: { userId: user.id },
-        select: { articleId: true },
-      })).map((b) => b.articleId)
-    );
+    const readSet = new Set(readRecords.map((r) => r.articleId));
+    const bookmarkSet = new Set(bookmarkRecords.map((b) => b.articleId));
 
     return json({
       ...base,
@@ -164,12 +168,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       })).map((r) => r.articleId)
     );
 
-    const allArticles = await prisma.article.findMany({
+    const allIds = await prisma.article.findMany({
       where: { feed: { userId: user.id } },
       select: { id: true },
     });
 
-    const unreadIds = allArticles
+    const unreadIds = allIds
       .filter((a) => !readIds.has(a.id))
       .map((a) => hashId(a.id));
 
@@ -196,11 +200,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const numericId = parseInt(id, 10);
 
     if (mark === "item") {
-      const allArticles = await prisma.article.findMany({
+      const allIds = await prisma.article.findMany({
         where: { feed: { userId: user.id } },
         select: { id: true },
       });
-      const article = allArticles.find((a) => hashId(a.id) === numericId);
+      const article = allIds.find((a) => hashId(a.id) === numericId);
 
       if (article) {
         if (asParam === "read") {
@@ -288,7 +292,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
 function hashId(cuid: string): number {
   const hash = crypto.createHash("md5").update(cuid).digest();
-  return hash.readUInt32BE(0);
+  return (hash.readUInt32BE(0) ^ hash.readUInt32BE(4) ^ hash.readUInt32BE(8) ^ hash.readUInt32BE(12)) >>> 0;
 }
 
 function groupFeeds(feedCategories: { feedId: string; categoryId: string }[]) {

@@ -23,7 +23,6 @@ export interface DigestItem {
 
 export interface StructuredDigestResult {
   categoryName: string;
-  isVuln: boolean;
   items: DigestItem[];
   totalArticles: number;
   filteredArticles?: number;
@@ -141,7 +140,7 @@ export function DigestView({ results, loading, error }: DigestViewProps) {
         <div key={sIdx} className="space-y-4">
           {/* Section Header */}
           <div className="flex items-center gap-2">
-            <span className="text-lg">{section.isVuln ? "🛡️" : "📌"}</span>
+            <span className="text-lg">{"📌"}</span>
             <h3 className="text-sm font-bold uppercase tracking-wide text-foreground">
               {section.categoryName}
             </h3>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "feed2040-v1";
+const CACHE_NAME = "feed2040-v2";
 const STATIC_ASSETS = ["/feeds", "/bookmarks", "/briefing", "/settings"];
 
 self.addEventListener("install", (event) => {
@@ -25,30 +25,12 @@ self.addEventListener("fetch", (event) => {
 
   if (request.method !== "GET") return;
 
+  // API requests: network-only, no caching
   if (url.pathname.startsWith("/api/")) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        })
-        .catch(() =>
-          caches.match(request).then(
-            (cached) =>
-              cached ||
-              new Response(JSON.stringify({ error: "Offline" }), {
-                status: 503,
-                headers: { "Content-Type": "application/json" },
-              })
-          )
-        )
-    );
     return;
   }
 
+  // Static assets: cache-first
   if (
     url.pathname.match(/\.(js|css|woff2?|ttf|svg|png|jpg|ico)$/) ||
     url.pathname.startsWith("/_next/static/")
@@ -69,6 +51,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Pages: network-first with offline fallback
   event.respondWith(
     fetch(request)
       .then((response) => {

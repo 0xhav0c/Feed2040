@@ -18,6 +18,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
       <head>
+        {/* Apple touch icon for iOS home screen (replace with PNG once generated) */}
+        <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.svg" />
         {/* Prevent FOUC: apply theme before paint */}
         <script
           dangerouslySetInnerHTML={{

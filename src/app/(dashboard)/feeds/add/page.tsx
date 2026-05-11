@@ -222,6 +222,13 @@ export default function AddFeedPage() {
         return;
       }
 
+      if (data.data?.discovered && data.data?.feedUrls) {
+        setError(`Found ${data.data.feedUrls.length} feed(s) on this page. Try one of these URLs:\n${data.data.feedUrls.join("\n")}`);
+        if (data.data.feedUrls.length === 1) {
+          setUrl(data.data.feedUrls[0]);
+        }
+        return;
+      }
       setPreview(data.data);
       setStep(2);
     } catch {

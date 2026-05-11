@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { translate } from "@vitalets/google-translate-api";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 const MAX_CHUNK_LENGTH = 4500;
 
@@ -49,6 +50,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rl = await checkRateLimit(`translate:${session.user.id}`, 30, 60);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Try again later." },
+      { status: 429, headers: rateLimitHeaders(rl, 30) }
+    );
   }
 
   try {

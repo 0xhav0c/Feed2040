@@ -55,13 +55,37 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const baseWhere: Record<string, unknown> = {
-      feed: { userId: session.user.id },
-      ...(feedId ? { feedId } : {}),
-      ...(categoryId ? { feed: { userId: session.user.id, categories: { some: { categoryId } } } } : {}),
-    };
+    // Build a single raw SQL query for todayCount and unreadCount using
+    // conditional aggregation, reducing the original 4 parallel queries to 3.
+    const statsParams: (string | Date)[] = [session.user.id];
+    let statsFilterClause = "";
+    if (feedId) {
+      statsParams.push(feedId);
+      statsFilterClause += ` AND a."feedId" = $${statsParams.length}`;
+    }
+    if (categoryId) {
+      statsParams.push(categoryId);
+      statsFilterClause += ` AND EXISTS (
+        SELECT 1 FROM "FeedCategory" fc WHERE fc."feedId" = a."feedId" AND fc."categoryId" = $${statsParams.length}
+      )`;
+    }
+    statsParams.push(todayStart);
+    const todayParamIndex = statsParams.length;
+    statsParams.push(session.user.id);
+    const unreadUserParamIndex = statsParams.length;
 
-    const [articles, total, todayCount, unreadCount] = await Promise.all([
+    const statsQuery = `
+      SELECT
+        COUNT(*) FILTER (WHERE a."publishedAt" >= $${todayParamIndex}) AS "todayCount",
+        COUNT(*) FILTER (WHERE NOT EXISTS (
+          SELECT 1 FROM "ReadArticle" ra WHERE ra."articleId" = a."id" AND ra."userId" = $${unreadUserParamIndex}
+        )) AS "unreadCount"
+      FROM "Article" a
+      JOIN "Feed" f ON f."id" = a."feedId"
+      WHERE f."userId" = $1${statsFilterClause}
+    `;
+
+    const [articles, total, statsResult] = await Promise.all([
       prisma.article.findMany({
         where,
         select: {
@@ -77,7 +101,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           enclosureUrl: true,
           enclosureType: true,
           enclosureDuration: true,
-          feed: { select: { id: true, title: true, faviconUrl: true } },
+          feed: { select: { id: true, title: true, faviconUrl: true, language: true } },
           bookmarks: {
             where: { userId: session.user.id },
             select: { id: true },
@@ -92,16 +116,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         take: limit,
       }),
       prisma.article.count({ where }),
-      prisma.article.count({
-        where: { ...baseWhere, publishedAt: { gte: todayStart } },
-      }),
-      prisma.article.count({
-        where: {
-          ...baseWhere,
-          readArticles: { none: { userId: session.user.id } },
-        },
-      }),
+      prisma.$queryRawUnsafe<{ todayCount: bigint; unreadCount: bigint }[]>(
+        statsQuery,
+        ...statsParams
+      ),
     ]);
+
+    const todayCount = Number(statsResult[0]?.todayCount ?? 0);
+    const unreadCount = Number(statsResult[0]?.unreadCount ?? 0);
 
     const formatted = articles.map((a: (typeof articles)[number]) => ({
       id: a.id,

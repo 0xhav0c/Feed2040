@@ -32,6 +32,7 @@ import type { ArticleWithFeed } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { isSafeUrl } from "@/lib/utils/url-validator";
 import { toast } from "sonner";
 
@@ -89,6 +90,7 @@ function ImageZoomModal({
         <button
           onClick={() => setScale((s) => Math.max(s - 0.25, 0.25))}
           className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+          aria-label="Zoom out"
         >
           <ZoomOut size={16} />
         </button>
@@ -98,18 +100,21 @@ function ImageZoomModal({
         <button
           onClick={() => setScale((s) => Math.min(s + 0.25, 4))}
           className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+          aria-label="Zoom in"
         >
           <ZoomIn size={16} />
         </button>
         <button
           onClick={() => setScale(1)}
           className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors ml-1"
+          aria-label="Reset zoom"
         >
           <Maximize2 size={14} />
         </button>
         <button
           onClick={onClose}
           className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors ml-1"
+          aria-label="Close"
         >
           <X size={16} />
         </button>
@@ -148,6 +153,9 @@ export const ArticlePanel = memo(function ArticlePanel({
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [relatedArticles, setRelatedArticles] = useState<
+    { id: string; title: string; url: string; feedTitle: string; publishedAt: string | null }[]
+  >([]);
   const langPickerRef = useRef<HTMLDivElement>(null);
   const shareMenuRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -197,6 +205,26 @@ export const ArticlePanel = memo(function ArticlePanel({
       })
       .finally(() => setLoadingContent(false));
   }, [article]);
+
+  // Fetch related articles when article changes
+  useEffect(() => {
+    if (!article) {
+      setRelatedArticles([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/articles/related?articleId=${encodeURIComponent(article.id)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.data) {
+          setRelatedArticles(data.data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedArticles([]);
+      });
+    return () => { cancelled = true; };
+  }, [article?.id]);
 
   useEffect(() => {
     if (!contentRef.current) return;
@@ -413,12 +441,66 @@ export const ArticlePanel = memo(function ArticlePanel({
 
   const displayContent = useMemo(() => {
     if (!rawContent) return null;
-    return DOMPurify.sanitize(rawContent, {
-      ALLOWED_TAGS: ["p", "br", "b", "i", "em", "strong", "a", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "code", "img", "figure", "figcaption", "div", "span"],
-      ALLOWED_ATTR: ["href", "src", "alt", "title", "class", "target", "rel"],
-      ADD_ATTR: ["target"],
+
+    const siteUrl = article?.feed?.siteUrl || article?.feed?.url || "";
+    let baseOrigin = "";
+    try { baseOrigin = new URL(siteUrl).origin; } catch { /* ignore */ }
+
+    let html = rawContent;
+
+    // Fix lazy-loaded images: promote data-src/data-original to src
+    html = html.replace(/<img([^>]*?)>/gi, (match, attrs: string) => {
+      const hasSrc = /\bsrc\s*=\s*["'](?!data:image\/gif|about:blank|data:image\/svg)/i.test(attrs);
+      if (hasSrc) return match;
+      const dataSrc = attrs.match(/data-(?:src|original|lazy-src)\s*=\s*["']([^"']+)["']/i);
+      if (dataSrc) {
+        return `<img src="${dataSrc[1]}"${attrs}>`;
+      }
+      const dataOrig = attrs.match(/data-orig-file\s*=\s*["']([^"']+)["']/i);
+      if (dataOrig) {
+        return `<img src="${dataOrig[1]}"${attrs}>`;
+      }
+      return match;
     });
-  }, [rawContent]);
+
+    // Fix relative URLs for images and links
+    if (baseOrigin) {
+      html = html.replace(/(src|href)\s*=\s*["'](\/[^"']*?)["']/gi, (_, attr: string, path: string) => {
+        return `${attr}="${baseOrigin}${path}"`;
+      });
+    }
+
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: [
+        "p", "br", "b", "i", "em", "strong", "a", "ul", "ol", "li",
+        "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "code",
+        "img", "figure", "figcaption", "div", "span",
+        "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption",
+        "hr", "sub", "sup", "mark", "del", "ins", "abbr", "details", "summary",
+        "audio", "video", "source",
+      ],
+      ALLOWED_ATTR: ["href", "src", "srcset", "alt", "title", "class", "target", "rel", "colspan", "rowspan", "controls", "preload", "type", "width", "height", "loading"],
+      ADD_ATTR: ["target"],
+      ALLOW_DATA_ATTR: false,
+    });
+  }, [rawContent, article?.feed?.siteUrl, article?.feed?.url]);
+
+  const isRtl = useMemo(() => {
+    // Check feed language for known RTL languages
+    const rtlLanguages = ["ar", "he", "fa", "ur"];
+    const feedLang = article?.feed?.language?.toLowerCase().split(/[-_]/)[0];
+    if (feedLang && rtlLanguages.includes(feedLang)) return true;
+
+    // Fallback: check if content starts with RTL characters (Arabic, Hebrew, Persian, etc.)
+    const textContent = rawContent
+      ? new DOMParser().parseFromString(rawContent, "text/html").body.textContent?.trim()
+      : null;
+    if (textContent && /^[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/.test(textContent)) {
+      return true;
+    }
+
+    return false;
+  }, [article?.feed?.language, rawContent]);
 
   if (!article) return null;
 
@@ -452,6 +534,7 @@ export const ArticlePanel = memo(function ArticlePanel({
               onClick={handleAiSummarize}
               disabled={loadingAiSummary}
               title="AI Summarize"
+              aria-label="Summarize with AI"
             >
               {loadingAiSummary ? (
                 <Loader2 size={15} className="animate-spin text-primary" />
@@ -469,6 +552,7 @@ export const ArticlePanel = memo(function ArticlePanel({
                     size="icon-sm"
                     onClick={() => setTranslatedContent(null)}
                     title="Show original"
+                    aria-label="Show original"
                     className="bg-primary/10 text-primary"
                   >
                     <Undo2 size={15} />
@@ -480,6 +564,7 @@ export const ArticlePanel = memo(function ArticlePanel({
                     onClick={handleTranslate}
                     disabled={translating}
                     title="Translate article"
+                    aria-label="Translate article"
                   >
                     {translating ? (
                       <Loader2 size={15} className="animate-spin text-primary" />
@@ -492,6 +577,7 @@ export const ArticlePanel = memo(function ArticlePanel({
                   onClick={() => setShowLangPicker((v) => !v)}
                   className="flex h-7 w-4 items-center justify-center text-muted-foreground hover:text-foreground transition-colors -ml-1"
                   title="Select language"
+                  aria-label="Select translation language"
                 >
                   <ChevronDown size={10} />
                 </button>
@@ -525,6 +611,7 @@ export const ArticlePanel = memo(function ArticlePanel({
               onClick={() => setReaderMode((r) => !r)}
               className={cn(readerMode && "bg-primary/10 text-primary")}
               title="Reader mode"
+              aria-label="Toggle reader mode"
             >
               <BookOpen size={15} />
             </Button>
@@ -534,6 +621,7 @@ export const ArticlePanel = memo(function ArticlePanel({
                 onClick={() => setFontSize((f) => Math.max(13, f - 1))}
                 className="flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                 title="Smaller"
+                aria-label="Decrease font size"
               >
                 <Minus size={12} />
               </button>
@@ -544,6 +632,7 @@ export const ArticlePanel = memo(function ArticlePanel({
                 onClick={() => setFontSize((f) => Math.min(24, f + 1))}
                 className="flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                 title="Larger"
+                aria-label="Increase font size"
               >
                 <Plus size={12} />
               </button>
@@ -554,6 +643,7 @@ export const ArticlePanel = memo(function ArticlePanel({
               size="icon-sm"
               onClick={handleBookmark}
               title={bookmarked ? "Saved" : "Read later"}
+              aria-label={bookmarked ? "Remove bookmark" : "Bookmark article"}
             >
               {bookmarked ? (
                 <BookmarkCheck size={15} className="text-primary" />
@@ -569,6 +659,7 @@ export const ArticlePanel = memo(function ArticlePanel({
                 size="icon-sm"
                 onClick={() => setShowShareMenu((s) => !s)}
                 title="Share / Export"
+                aria-label="Share or export article"
                 className={cn(showShareMenu && "bg-primary/10 text-primary")}
               >
                 <Share2 size={15} />
@@ -617,6 +708,7 @@ export const ArticlePanel = memo(function ArticlePanel({
               rel="noopener noreferrer"
               className="flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors ml-1"
               title="Open original"
+              aria-label="Open original article"
             >
               <ExternalLink size={12} />
               <span className="hidden lg:inline">Original</span>
@@ -686,6 +778,7 @@ export const ArticlePanel = memo(function ArticlePanel({
             {/* Article body */}
             <div
               ref={contentRef}
+              dir={isRtl ? "rtl" : undefined}
               className={cn(
                 "article-content max-w-none text-foreground transition-all",
                 readerMode && "font-serif leading-[1.9]"
@@ -771,6 +864,46 @@ export const ArticlePanel = memo(function ArticlePanel({
                 {bookmarked ? "Saved" : "Read Later"}
               </Button>
             </div>
+
+            {/* Related Articles */}
+            {relatedArticles.length > 0 && (
+              <div className="border-t border-border pt-5 pb-6">
+                <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+                  <Rss size={14} className="text-muted-foreground" />
+                  Related Articles
+                </h3>
+                <ul className="space-y-2.5">
+                  {relatedArticles.map((ra) => (
+                    <li key={ra.id}>
+                      <a
+                        href={isSafeUrl(ra.url) ? ra.url : "#"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-start gap-2 rounded-lg px-2.5 py-2 -mx-2.5 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-foreground group-hover:text-primary leading-snug line-clamp-2">
+                            {ra.title}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-muted-foreground">{ra.feedTitle}</span>
+                            {ra.publishedAt && (
+                              <>
+                                <span className="text-[10px] text-muted-foreground">·</span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {formatDistanceToNow(new Date(ra.publishedAt), { addSuffix: true })}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <ExternalLink size={12} className="text-muted-foreground shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </article>
         </div>
       </div>

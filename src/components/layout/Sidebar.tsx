@@ -17,7 +17,26 @@ import {
   LogOut,
   User,
   FolderOpen,
+  FolderTree,
   Sparkles,
+  LayoutDashboard,
+  Newspaper,
+  Code,
+  Bot,
+  FlaskConical,
+  Palette,
+  TrendingUp,
+  Gamepad2,
+  Heart,
+  BookOpen,
+  Globe,
+  Zap,
+  Music,
+  Camera,
+  Coffee,
+  Briefcase,
+  GraduationCap,
+  type LucideIcon,
 } from "lucide-react";
 import { TelegramIcon } from "@/components/icons/BrandIcons";
 import { FeedContextMenu } from "@/components/feed/FeedContextMenu";
@@ -38,6 +57,33 @@ import {
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 
+const ICON_MAP: Record<string, LucideIcon> = {
+  FolderTree,
+  Rss,
+  Bookmark,
+  Newspaper,
+  Code,
+  Bot,
+  FlaskConical,
+  Palette,
+  TrendingUp,
+  Gamepad2,
+  Heart,
+  BookOpen,
+  Globe,
+  Zap,
+  Music,
+  Camera,
+  Coffee,
+  Briefcase,
+  GraduationCap,
+};
+
+function getCategoryIcon(icon: string | null): LucideIcon {
+  if (!icon) return FolderTree;
+  return ICON_MAP[icon] ?? FolderTree;
+}
+
 type SidebarFeed = {
   id: string;
   title: string;
@@ -57,6 +103,7 @@ type SidebarCategory = {
 };
 
 const NAV_ITEMS = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, param: "" },
   { href: "/feeds", label: "All Feeds", icon: Rss, param: "" },
   { href: "/bookmarks", label: "Read Later", icon: Bookmark, param: "" },
   { href: "/briefing", label: "Daily Briefing", icon: Sparkles, param: "" },
@@ -137,7 +184,9 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
 
   useEffect(() => {
     fetchSidebar();
-    const interval = setInterval(fetchSidebar, 60_000);
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchSidebar();
+    }, 60_000);
     return () => clearInterval(interval);
   }, [fetchSidebar]);
 
@@ -199,6 +248,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
                     router.push("/feeds/add");
                     onNavigate?.();
                   }}
+                  aria-label="Add Feed"
                 />
               }
             >
@@ -335,7 +385,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
                           onNavigate?.();
                         }}
                       >
-                        <span className="shrink-0 text-sm">{cat.icon || "📁"}</span>
+                        {(() => { const CatIcon = getCategoryIcon(cat.icon); return <CatIcon size={16} className="shrink-0" />; })()}
                         <span className="flex-1 truncate text-left">{cat.name}</span>
                         {cat.unread > 0 && (
                           <Badge
@@ -414,6 +464,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
                     size="icon"
                     className="h-9 w-9 rounded-xl text-sidebar-foreground hover:bg-sidebar-accent"
                     onClick={() => setCollapsed(false)}
+                    aria-label="Expand to see categories"
                   />
                 }
               >
@@ -491,6 +542,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
               size="icon"
               className="h-8 w-full rounded-none text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
               onClick={() => setCollapsed(!collapsed)}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             />
           }
         >

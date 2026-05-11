@@ -58,6 +58,8 @@ services:
       REDIS_URL: "redis://redis:6379"
       CRON_SECRET: "${CRON_SECRET}"
       REFRESH_INTERVAL_MINUTES: "${REFRESH_INTERVAL_MINUTES:-15}"
+    volumes:
+      - ./backups:/app/backups
     deploy:
       resources:
         limits:

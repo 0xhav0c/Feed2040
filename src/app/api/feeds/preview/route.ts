@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { previewFeed } from "@/lib/rss/parser";
+import { previewFeed, discoverFeedUrls } from "@/lib/rss/parser";
 import { validateFeedUrl } from "@/lib/utils/url-validator";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
@@ -30,7 +30,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: validation.error ?? "Invalid URL" }, { status: 400 });
     }
 
-    const preview = await previewFeed(url);
+    let preview;
+    try {
+      preview = await previewFeed(url);
+    } catch (parseError) {
+      // Feed parsing failed — try autodiscovery
+      try {
+        const feedUrls = await discoverFeedUrls(url);
+        if (feedUrls.length > 0) {
+          return NextResponse.json({
+            data: { discovered: true, feedUrls },
+          });
+        }
+      } catch {
+        // Autodiscovery also failed, fall through to original error
+      }
+
+      console.error("Feed preview failed:", parseError);
+      return NextResponse.json(
+        { error: "Could not parse feed. Make sure the URL points to a valid RSS, Atom, or JSON feed." },
+        { status: 422 }
+      );
+    }
 
     return NextResponse.json({ data: preview });
   } catch (error) {

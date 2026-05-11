@@ -107,6 +107,10 @@ export default function BriefingPage() {
   const [showArchive, setShowArchive] = useState(false);
 
   useEffect(() => {
+    document.title = "Briefing | Feed2040";
+  }, []);
+
+  useEffect(() => {
     fetch("/api/categories")
       .then((res) => res.json())
       .then((data) => {

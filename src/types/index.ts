@@ -45,7 +45,10 @@ export type ArticleWithFeed = {
   feed: {
     id: string;
     title: string;
+    url?: string;
+    siteUrl?: string | null;
     faviconUrl: string | null;
+    language?: string | null;
   };
   isRead: boolean;
   isBookmarked: boolean;

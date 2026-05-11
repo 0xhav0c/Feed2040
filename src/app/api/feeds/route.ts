@@ -71,6 +71,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const parsedFeed = await parseFeed(url);
 
+    // Derive favicon URL from Google's favicon service
+    let faviconUrl: string | null = null;
+    try {
+      const domain = new URL(parsedFeed.siteUrl || url).hostname;
+      faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+    } catch {
+      // ignore URL parsing errors
+    }
+
     const feed = await prisma.feed.create({
       data: {
         url,
@@ -79,6 +88,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         description: parsedFeed.description,
         imageUrl: parsedFeed.imageUrl,
         language: parsedFeed.language,
+        faviconUrl,
         lastFetched: new Date(),
         userId: session.user.id,
         categories: categoryIds?.length

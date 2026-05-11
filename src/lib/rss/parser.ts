@@ -117,3 +117,68 @@ export async function previewFeed(url: string): Promise<ParsedFeed & { itemCount
     items: feed.items.slice(0, 5),
   };
 }
+
+export async function discoverFeedUrls(url: string): Promise<string[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Feed2040/1.0 RSS Reader",
+      },
+    });
+
+    if (!response.ok) return [];
+
+    const html = await response.text();
+
+    // Match <link> tags with rel="alternate" and RSS/Atom types
+    const linkPattern =
+      /<link[^>]+rel=["']alternate["'][^>]*>/gi;
+    const matches = html.match(linkPattern) || [];
+
+    const feedUrls: string[] = [];
+    const baseUrl = new URL(url);
+
+    for (const tag of matches) {
+      // Check for RSS or Atom type
+      const typeMatch = tag.match(/type=["']([^"']+)["']/i);
+      if (!typeMatch) continue;
+
+      const type = typeMatch[1].toLowerCase();
+      if (
+        type !== "application/rss+xml" &&
+        type !== "application/atom+xml" &&
+        type !== "application/feed+json"
+      ) {
+        continue;
+      }
+
+      // Extract href
+      const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
+      if (!hrefMatch) continue;
+
+      const href = hrefMatch[1];
+
+      // Resolve relative URLs
+      try {
+        const resolved = new URL(href, baseUrl).toString();
+        if (!feedUrls.includes(resolved)) {
+          feedUrls.push(resolved);
+        }
+      } catch {
+        // Skip invalid URLs
+      }
+
+      if (feedUrls.length >= 10) break;
+    }
+
+    return feedUrls;
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateDailyDigest } from "@/lib/ai/summarizer";
 import { formatStructuredDigest } from "@/lib/telegram/bot";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { subHours, format } from "date-fns";
 
 function todayKey(): string {
@@ -39,6 +40,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rl = await checkRateLimit(`ai:digest:${session.user.id}`, 5, 3600);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Try again later." },
+      { status: 429, headers: rateLimitHeaders(rl, 5) }
+    );
   }
 
   try {

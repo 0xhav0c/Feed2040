@@ -61,6 +61,32 @@ async function runCycle() {
   setTimeout(runCycle, currentInterval * 60 * 1000);
 }
 
+// ── Article cleanup scheduler (runs once per day) ──
+let lastCleanupRun = 0;
+const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+async function runCleanup() {
+  const now = Date.now();
+  if (now - lastCleanupRun < CLEANUP_INTERVAL_MS) return;
+
+  try {
+    const res = await fetch(`${baseUrl}/api/cron/cleanup`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cronSecret}` },
+    });
+    const data = await res.json();
+    if (res.ok) {
+      console.log(`[Cron] Cleanup complete: ${data.data.deleted} articles deleted`);
+    } else {
+      console.error("[Cron] Cleanup failed:", data.error);
+    }
+  } catch (err) {
+    console.error("[Cron] Cleanup error:", err.message);
+  }
+
+  lastCleanupRun = now;
+}
+
 // ── Digest scheduler (runs every minute) ──
 async function checkDigest() {
   try {
@@ -102,3 +128,5 @@ setTimeout(runCycle, 30000);
 setInterval(checkDigest, 60000);
 // Check web briefing schedule every 60 seconds
 setInterval(checkWebBriefing, 60000);
+// Check cleanup schedule every 60 seconds (runs once per day)
+setInterval(runCleanup, 60000);

@@ -11,20 +11,44 @@ export async function GET(): Promise<NextResponse> {
   const userId = session.user.id;
 
   try {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+
     const [
-      totalFeeds,
-      totalArticles,
-      totalBookmarks,
-      totalCategories,
-      readCount,
+      userCounts,
+      readStats,
+      articleStats,
       feedsWithCounts,
       articlesPerDay,
+      topFeedsThisWeek,
     ] = await Promise.all([
-      prisma.feed.count({ where: { userId } }),
-      prisma.article.count({ where: { feed: { userId } } }),
-      prisma.bookmark.count({ where: { userId } }),
-      prisma.category.count({ where: { userId } }),
-      prisma.readArticle.count({ where: { userId } }),
+      // Merge totalFeeds, totalBookmarks, totalCategories into one query
+      prisma.$queryRaw<[{ feeds: bigint; bookmarks: bigint; categories: bigint }]>`
+        SELECT
+          (SELECT COUNT(*) FROM "Feed" WHERE "userId" = ${userId}) as feeds,
+          (SELECT COUNT(*) FROM "Bookmark" WHERE "userId" = ${userId}) as bookmarks,
+          (SELECT COUNT(*) FROM "Category" WHERE "userId" = ${userId}) as categories
+      `,
+      // Merge readCount, readToday, readThisWeek into one query
+      prisma.$queryRaw<[{ total: bigint; today: bigint; this_week: bigint }]>`
+        SELECT
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE "readAt" >= ${startOfToday}) as today,
+          COUNT(*) FILTER (WHERE "readAt" >= ${startOfWeek}) as this_week
+        FROM "ReadArticle"
+        WHERE "userId" = ${userId}
+      `,
+      // Merge totalArticles, articlesToday, articlesThisWeek into one query
+      prisma.$queryRaw<[{ total: bigint; today: bigint; this_week: bigint }]>`
+        SELECT
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE "publishedAt" >= ${startOfToday}) as today,
+          COUNT(*) FILTER (WHERE "publishedAt" >= ${startOfWeek}) as this_week
+        FROM "Article"
+        WHERE "feedId" IN (SELECT id FROM "Feed" WHERE "userId" = ${userId})
+      `,
       prisma.feed.findMany({
         where: { userId },
         select: {
@@ -46,7 +70,27 @@ export async function GET(): Promise<NextResponse> {
         GROUP BY DATE("publishedAt")
         ORDER BY date ASC
       `,
+      prisma.$queryRaw<{ feedId: string; title: string; count: bigint }[]>`
+        SELECT f.id as "feedId", f.title, COUNT(a.id)::bigint as count
+        FROM "Article" a
+        JOIN "Feed" f ON a."feedId" = f.id
+        WHERE f."userId" = ${userId}
+          AND a."publishedAt" >= ${startOfWeek}
+        GROUP BY f.id, f.title
+        ORDER BY count DESC
+        LIMIT 5
+      `,
     ]);
+
+    const totalFeeds = Number(userCounts[0].feeds);
+    const totalArticles = Number(articleStats[0].total);
+    const totalBookmarks = Number(userCounts[0].bookmarks);
+    const totalCategories = Number(userCounts[0].categories);
+    const readCount = Number(readStats[0].total);
+    const readToday = Number(readStats[0].today);
+    const readThisWeek = Number(readStats[0].this_week);
+    const articlesToday = Number(articleStats[0].today);
+    const articlesThisWeek = Number(articleStats[0].this_week);
 
     const unreadCount = totalArticles - readCount;
 
@@ -78,6 +122,13 @@ export async function GET(): Promise<NextResponse> {
       fetchError: f.fetchError,
     }));
 
+    const healthyCount = feedsWithCounts.filter(
+      (f: (typeof feedsWithCounts)[number]) => !f.fetchError && f.errorCount === 0
+    ).length;
+    const errorFeedCount = feedsWithCounts.filter(
+      (f: (typeof feedsWithCounts)[number]) => f.errorCount > 0
+    ).length;
+
     return NextResponse.json({
       data: {
         overview: {
@@ -87,10 +138,22 @@ export async function GET(): Promise<NextResponse> {
           totalCategories,
           readCount,
           unreadCount,
+          readToday,
+          readThisWeek,
+          articlesToday,
+          articlesThisWeek,
         },
         articlesByDay,
         topFeeds,
+        topFeedsThisWeek: topFeedsThisWeek.map((f) => ({
+          title: f.title,
+          count: Number(f.count),
+        })),
         feedHealth,
+        feedHealthSummary: {
+          healthy: healthyCount,
+          errors: errorFeedCount,
+        },
       },
     });
   } catch (error) {

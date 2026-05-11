@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArticlePanel } from "@/components/feed/ArticlePanel";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
@@ -17,6 +17,7 @@ import {
   CheckCheck,
   CalendarDays,
   Eye,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DigestModal } from "@/components/feed/DigestModal";
@@ -44,6 +45,9 @@ const SHORTCUTS = [
   { key: "t", desc: "Translate article" },
   { key: "s", desc: "AI summarize" },
   { key: "r", desc: "Refresh feeds" },
+  { key: "A", desc: "Mark all read in current view" },
+  { key: "n", desc: "Next page" },
+  { key: "p", desc: "Previous page" },
   { key: "Esc", desc: "Close article panel" },
   { key: "/", desc: "Focus search" },
   { key: "?", desc: "Toggle shortcut help" },
@@ -88,6 +92,7 @@ function FeedsContent() {
 
   const [selectedArticle, setSelectedArticle] =
     useState<ArticleWithFeed | null>(null);
+  const [mobileShowArticle, setMobileShowArticle] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showDigest, setShowDigest] = useState(false);
 
@@ -136,6 +141,10 @@ function FeedsContent() {
   );
 
   useEffect(() => {
+    document.title = "Feeds | Feed2040";
+  }, []);
+
+  useEffect(() => {
     setPage(1);
     setSearchQuery("");
     setSearchInput("");
@@ -168,10 +177,13 @@ function FeedsContent() {
     }
   }, [feedId, categoryId]);
 
+  const initialLoadDone = useRef(false);
   useEffect(() => {
-    if (searchQuery !== undefined) {
-      fetchArticles(page, searchQuery, activeFilter);
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      return;
     }
+    fetchArticles(page, searchQuery, activeFilter);
   }, [fetchArticles, page, searchQuery, activeFilter]);
 
   const handleSearchChange = useCallback((value: string) => {
@@ -311,6 +323,7 @@ function FeedsContent() {
 
   const handleSelectArticle = useCallback((article: ArticleWithFeed) => {
     setSelectedArticle(article);
+    setMobileShowArticle(true);
     setArticles((prev) =>
       prev.map((a) => (a.id === article.id ? { ...a, isRead: true } : a))
     );
@@ -385,6 +398,13 @@ function FeedsContent() {
         searchRef.current?.focus();
       },
       r: () => handleRefresh(),
+      A: () => handleMarkAllRead(),
+      n: () => {
+        if (page < totalPages) setPage((p) => Math.min(totalPages, p + 1));
+      },
+      p: () => {
+        if (page > 1) setPage((p) => Math.max(1, p - 1));
+      },
       Escape: () => {
         if (selectedArticle) setSelectedArticle(null);
       },
@@ -398,6 +418,9 @@ function FeedsContent() {
       handleBookmarkToggle,
       handleToggleRead,
       handleRefresh,
+      handleMarkAllRead,
+      page,
+      totalPages,
     ]
   );
 
@@ -460,7 +483,10 @@ function FeedsContent() {
         {/* Main content area */}
         <div className="flex flex-1 min-h-0">
           {/* LEFT: Article list panel */}
-          <div className="flex w-[420px] flex-shrink-0 flex-col border-r border-border bg-card/30">
+          <div className={cn(
+            "w-full md:w-[420px] flex-shrink-0 flex-col border-r border-border bg-card/30",
+            mobileShowArticle ? "hidden md:flex" : "flex"
+          )}>
             {/* List header */}
             <div className="border-b border-border px-4 py-3 flex-shrink-0 space-y-2">
               <div className="flex items-center justify-between">
@@ -483,6 +509,7 @@ function FeedsContent() {
                     onClick={handleMarkAllRead}
                     disabled={markingAllRead || unreadCount === 0}
                     title="Mark all as read"
+                    aria-label="Mark all as read"
                   >
                     {markingAllRead ? (
                       <Loader2 size={16} className="animate-spin text-muted-foreground" />
@@ -495,6 +522,7 @@ function FeedsContent() {
                     size="icon"
                     onClick={() => setShowDigest(true)}
                     title="Daily Briefing"
+                    aria-label="Daily Briefing"
                   >
                     <Sparkles size={16} className="text-muted-foreground" />
                   </Button>
@@ -504,6 +532,7 @@ function FeedsContent() {
                     onClick={handleRefresh}
                     disabled={refreshing}
                     title="Refresh Feeds"
+                    aria-label="Refresh feeds"
                   >
                     <RefreshCw
                       size={16}
@@ -568,6 +597,7 @@ function FeedsContent() {
                   <button
                     onClick={clearSearch}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
                   >
                     <X size={12} />
                   </button>
@@ -642,11 +672,24 @@ function FeedsContent() {
           </div>
 
           {/* RIGHT: Reading pane */}
-          <div className="flex-1 flex flex-col min-w-0 bg-background">
+          <div className={cn(
+            "flex-1 flex-col min-w-0 bg-background",
+            !mobileShowArticle ? "hidden md:flex" : "flex"
+          )}>
+            {/* Mobile back button */}
+            {selectedArticle && (
+              <button
+                className="md:hidden flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border-b border-border bg-background"
+                onClick={() => setMobileShowArticle(false)}
+              >
+                <ArrowLeft size={16} />
+                Back to list
+              </button>
+            )}
             {selectedArticle ? (
               <ArticlePanel
                 article={selectedArticle}
-                onClose={() => setSelectedArticle(null)}
+                onClose={() => { setSelectedArticle(null); setMobileShowArticle(false); }}
                 onBookmarkToggle={handleBookmarkToggle}
                 bookmarked={bookmarkedIds.has(selectedArticle.id)}
               />
@@ -702,7 +745,7 @@ function FeedsContent() {
 }
 
 /* ─── Mail-style list item ──────────────────────────────────── */
-function MailListItem({
+const MailListItem = memo(function MailListItem({
   article,
   isSelected,
   onSelect,
@@ -767,4 +810,4 @@ function MailListItem({
       </div>
     </button>
   );
-}
+});

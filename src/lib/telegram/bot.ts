@@ -129,7 +129,7 @@ export function formatStructuredDigest(
   lines.push("");
 
   for (const section of results) {
-    const icon = section.isVuln ? "🛡️" : "📌";
+    const icon = "📌";
     lines.push(`${icon} <b>${esc(section.categoryName.toUpperCase())}</b>`);
     const sectionStats = section.filteredArticles
       ? `${section.totalArticles} scanned → ${section.filteredArticles} important`

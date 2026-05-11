@@ -20,7 +20,7 @@ export async function GET(
     const article = await prisma.article.findFirst({
       where: { id, feed: { userId: session.user.id } },
       include: {
-        feed: { select: { id: true, title: true, faviconUrl: true, scrapeFullText: true } },
+        feed: { select: { id: true, title: true, url: true, siteUrl: true, faviconUrl: true, language: true, scrapeFullText: true } },
         bookmarks: {
           where: { userId: session.user.id },
           select: { id: true },

@@ -27,21 +27,19 @@ export async function GET(): Promise<NextResponse> {
       orderBy: { title: "asc" },
     });
 
-    // Count read articles per feed efficiently
     const feedIds = feeds.map((f: (typeof feeds)[number]) => f.id);
-    let feedReadCounts: Record<string, number> = {};
+    const feedReadCounts: Record<string, number> = {};
 
     if (feedIds.length > 0) {
-      const readCounts = await prisma.readArticle.findMany({
-        where: {
-          userId,
-          article: { feedId: { in: feedIds } },
-        },
-        select: { article: { select: { feedId: true } } },
-      });
-
-      for (const r of readCounts) {
-        feedReadCounts[r.article.feedId] = (feedReadCounts[r.article.feedId] || 0) + 1;
+      const rows = await prisma.$queryRaw<{ feedId: string; cnt: bigint }[]>`
+        SELECT a."feedId", COUNT(*) as cnt
+        FROM "ReadArticle" ra
+        JOIN "Article" a ON ra."articleId" = a.id
+        WHERE ra."userId" = ${userId} AND a."feedId" = ANY(${feedIds})
+        GROUP BY a."feedId"
+      `;
+      for (const r of rows) {
+        feedReadCounts[r.feedId] = Number(r.cnt);
       }
     }
 

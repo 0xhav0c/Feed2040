@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { resolveSecretKey, getUserOllamaUrl, setUserOllamaUrl, getUserBaseUrl, setUserBaseUrl, getAppSetting } from "@/lib/settings";
+import { resolveSecretKey, getUserBaseUrl, setUserBaseUrl } from "@/lib/settings";
 import { z } from "zod";
 
 const aiSettingsSchema = z.object({
-  provider: z.enum(["openai", "anthropic", "ollama"]).optional(),
   model: z.string().min(1).optional(),
   digestModel: z.string().min(1).optional(),
   autoSummarize: z.boolean().optional(),
   language: z.string().min(2).optional(),
-  ollamaBaseUrl: z.string().url().optional(),
-  openaiBaseUrl: z.string().url().optional().nullable(),
-  anthropicBaseUrl: z.string().url().optional().nullable(),
+  baseUrl: z.string().url().optional().nullable(),
   briefingEnabled: z.boolean().optional(),
   briefingTimes: z.array(z.string()).optional(),
   briefingTimezone: z.string().optional(),
@@ -27,51 +24,40 @@ export async function GET(): Promise<NextResponse> {
   }
 
   try {
+    const userId = session.user.id;
     const aiSettings = await prisma.aISettings.findUnique({
-      where: { userId: session.user.id },
+      where: { userId },
     });
 
-    const userId = session.user.id;
-    const openaiKey = await resolveSecretKey(userId, "openaiApiKey", "OPENAI_API_KEY");
-    const anthropicKey = await resolveSecretKey(userId, "anthropicApiKey", "ANTHROPIC_API_KEY");
-    const ollamaBaseUrl = await getUserOllamaUrl(userId) || await getAppSetting("ollama_base_url");
-    const openaiBaseUrl = await getUserBaseUrl(userId, "openaiBaseUrl");
-    const anthropicBaseUrl = await getUserBaseUrl(userId, "anthropicBaseUrl");
+    const apiKey = await resolveSecretKey(userId, "openaiApiKey", "OPENAI_API_KEY");
+    const baseUrl = await getUserBaseUrl(userId, "openaiBaseUrl");
+
+    const defaults = {
+      model: "gpt-4o-mini",
+      digestModel: "gpt-4o",
+      autoSummarize: false,
+      language: "en",
+      baseUrl: baseUrl || "",
+      keyConfigured: !!apiKey,
+      briefingEnabled: false,
+      briefingTimes: [],
+      briefingTimezone: "Europe/Istanbul",
+      briefingHours: 24,
+      briefingCategories: [],
+    };
 
     if (!aiSettings) {
-      return NextResponse.json({
-        data: {
-          provider: "openai",
-          model: "gpt-4o-mini",
-          digestModel: "gpt-4o",
-          autoSummarize: false,
-          language: "en",
-          openaiKeyConfigured: !!openaiKey,
-          anthropicKeyConfigured: !!anthropicKey,
-          ollamaBaseUrl: ollamaBaseUrl || "http://localhost:11434/v1",
-          openaiBaseUrl: openaiBaseUrl || "",
-          anthropicBaseUrl: anthropicBaseUrl || "",
-          briefingEnabled: false,
-          briefingTimes: [],
-          briefingTimezone: "Europe/Istanbul",
-          briefingHours: 24,
-          briefingCategories: [],
-        },
-      });
+      return NextResponse.json({ data: defaults });
     }
 
     return NextResponse.json({
       data: {
-        provider: aiSettings.provider,
-        model: aiSettings.model,
-        digestModel: aiSettings.digestModel,
+        model: aiSettings.model || defaults.model,
+        digestModel: aiSettings.digestModel || defaults.digestModel,
         autoSummarize: aiSettings.autoSummarize,
-        language: aiSettings.language,
-        openaiKeyConfigured: !!openaiKey,
-        anthropicKeyConfigured: !!anthropicKey,
-        ollamaBaseUrl: ollamaBaseUrl || "http://localhost:11434/v1",
-        openaiBaseUrl: openaiBaseUrl || "",
-        anthropicBaseUrl: anthropicBaseUrl || "",
+        language: aiSettings.language || defaults.language,
+        baseUrl: baseUrl || "",
+        keyConfigured: !!apiKey,
         briefingEnabled: aiSettings.briefingEnabled,
         briefingTimes: aiSettings.briefingTimes,
         briefingTimezone: aiSettings.briefingTimezone,
@@ -98,21 +84,15 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
     const body = await req.json();
     const data = aiSettingsSchema.parse(body);
 
-    if (data.ollamaBaseUrl) {
-      await setUserOllamaUrl(session.user.id, data.ollamaBaseUrl);
-    }
-    if (data.openaiBaseUrl !== undefined) {
-      await setUserBaseUrl(session.user.id, "openaiBaseUrl", data.openaiBaseUrl || null);
-    }
-    if (data.anthropicBaseUrl !== undefined) {
-      await setUserBaseUrl(session.user.id, "anthropicBaseUrl", data.anthropicBaseUrl || null);
+    if (data.baseUrl !== undefined) {
+      await setUserBaseUrl(session.user.id, "openaiBaseUrl", data.baseUrl || null);
     }
 
-    const aiSettings = await prisma.aISettings.upsert({
+    await prisma.aISettings.upsert({
       where: { userId: session.user.id },
       create: {
         userId: session.user.id,
-        provider: data.provider ?? "openai",
+        provider: "openai",
         model: data.model ?? "gpt-4o-mini",
         digestModel: data.digestModel ?? "gpt-4o",
         autoSummarize: data.autoSummarize ?? false,
@@ -124,12 +104,9 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
         briefingCategories: data.briefingCategories ?? [],
       },
       update: {
-        ...(data.provider !== undefined && { provider: data.provider }),
         ...(data.model !== undefined && { model: data.model }),
         ...(data.digestModel !== undefined && { digestModel: data.digestModel }),
-        ...(data.autoSummarize !== undefined && {
-          autoSummarize: data.autoSummarize,
-        }),
+        ...(data.autoSummarize !== undefined && { autoSummarize: data.autoSummarize }),
         ...(data.language !== undefined && { language: data.language }),
         ...(data.briefingEnabled !== undefined && { briefingEnabled: data.briefingEnabled }),
         ...(data.briefingTimes !== undefined && { briefingTimes: data.briefingTimes }),
@@ -137,21 +114,9 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
         ...(data.briefingHours !== undefined && { briefingHours: data.briefingHours }),
         ...(data.briefingCategories !== undefined && { briefingCategories: data.briefingCategories }),
       },
-      select: {
-        provider: true,
-        model: true,
-        digestModel: true,
-        autoSummarize: true,
-        language: true,
-        briefingEnabled: true,
-        briefingTimes: true,
-        briefingTimezone: true,
-        briefingHours: true,
-        briefingCategories: true,
-      },
     });
 
-    return NextResponse.json({ data: aiSettings });
+    return NextResponse.json({ data: { success: true } });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

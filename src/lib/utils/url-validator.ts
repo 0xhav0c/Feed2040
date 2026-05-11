@@ -38,7 +38,40 @@ function isPrivateIP(hostname: string): boolean {
   if (stripped.startsWith("fe80")) return true;
   if (stripped === "::") return true;
 
+  // IPv4-mapped IPv6 (::ffff:127.0.0.1, ::ffff:10.0.0.1, etc.)
+  const mappedMatch = stripped.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (mappedMatch) return isPrivateIP(mappedMatch[1]);
+
   return false;
+}
+
+export function validateApiBaseUrl(url: string): { valid: boolean; error?: string } {
+  if (!url || typeof url !== "string") {
+    return { valid: false, error: "URL is required" };
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return { valid: false, error: "Invalid URL format" };
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { valid: false, error: "Only http/https URLs are allowed" };
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  if (BLOCKED_HOSTNAMES.has(hostname)) {
+    return { valid: false, error: "This hostname is not allowed" };
+  }
+
+  if (isPrivateIP(hostname)) {
+    return { valid: false, error: "Private/internal IP addresses are not allowed" };
+  }
+
+  return { valid: true };
 }
 
 export function isSafeUrl(url: string | null | undefined): boolean {

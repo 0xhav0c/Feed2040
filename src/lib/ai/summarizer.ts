@@ -19,10 +19,6 @@ function langName(code: string): string {
   return LANGUAGE_NAMES[code] || code;
 }
 
-function isLocal(config: AIConfig): boolean {
-  return config.provider === "ollama";
-}
-
 // ── Single Article Summarization ────────────────────────────────────
 
 export async function summarizeArticle(
@@ -31,23 +27,18 @@ export async function summarizeArticle(
   userId?: string
 ): Promise<string | null> {
   const config = await getAIConfig(userId);
-  const provider = await createProvider(config.provider, userId);
+  const provider = await createProvider(userId);
   if (!provider) return null;
 
   const lang = language || config.language;
   const text = content?.trim() || "";
   if (!text) return null;
 
-  const local = isLocal(config);
   const result = await provider.chat({
     model: config.model,
-    systemPrompt: local
-      ? `Summarize articles in ${langName(lang)}. Keep technical terms in English. 2-4 sentences.`
-      : `You are a helpful assistant that summarizes articles concisely. You MUST respond entirely in ${langName(lang)}.`,
-    userPrompt: local
-      ? `Summarize in ${langName(lang)}:\n\n${text.slice(0, 6000)}`
-      : `Summarize the following article in 2-4 sentences. Respond in ${langName(lang)}:\n\n${text.slice(0, 12000)}`,
-    maxTokens: local ? 400 : 300,
+    systemPrompt: `You are a helpful assistant that summarizes articles concisely. You MUST respond entirely in ${langName(lang)}.`,
+    userPrompt: `Summarize the following article in 2-4 sentences. Respond in ${langName(lang)}:\n\n${text.slice(0, 12000)}`,
+    maxTokens: 300,
   });
 
   return result;
@@ -78,24 +69,9 @@ export interface DigestItem {
 
 export interface StructuredDigestResult {
   categoryName: string;
-  isVuln: boolean;
   items: DigestItem[];
   totalArticles: number;
   filteredArticles?: number;
-}
-
-// ── Vulnerability Detection ─────────────────────────────────────────
-
-const VULN_KEYWORDS = [
-  "vulnerability", "vulnerabilities", "cve", "exploit", "zafiyet",
-  "güvenlik açığı", "güvenlik açıkları", "saldırı", "malware",
-  "threat", "advisory", "patch", "sploitus", "security advisory",
-  "security", "güvenlik", "siber", "cybersecurity",
-];
-
-function isVulnCategory(categoryName: string): boolean {
-  const lower = categoryName.toLowerCase();
-  return VULN_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
 // ── Robust JSON Extraction ──────────────────────────────────────────
@@ -238,7 +214,8 @@ function fallbackParse(text: string): DigestItem[] {
 // MULTI-STAGE PIPELINE
 // Stage 1: Score articles for global importance (1-10)
 // Stage 2: Deduplicate similar articles
-// Stage 3: Generate digest from top-scored, deduplicated articles
+// Stage 3: Filter by score threshold
+// Stage 4: Generate digest from top-scored, deduplicated articles
 // ═════════════════════════════════════════════════════════════════════
 
 interface ScoredArticle extends DigestArticle {
@@ -253,9 +230,8 @@ async function scoreArticles(
   config: AIConfig,
   articles: DigestArticle[],
 ): Promise<ScoredArticle[]> {
-  const local = isLocal(config);
   const model = config.model;
-  const BATCH = local ? 20 : 50;
+  const BATCH = 50;
 
   const scored: ScoredArticle[] = articles.map((a, i) => ({
     ...a, score: 5, originalIndex: i,
@@ -268,8 +244,8 @@ async function scoreArticles(
 
     const compact = batch.map((a, idx) => ({
       i: i + idx,
-      t: a.title.slice(0, local ? 100 : 150),
-      s: (a.summary || "").slice(0, local ? 60 : 100),
+      t: a.title.slice(0, 150),
+      s: (a.summary || "").slice(0, 100),
       f: a.feedTitle.slice(0, 30),
     }));
 
@@ -277,26 +253,17 @@ async function scoreArticles(
 
     const result = await provider.chat({
       model,
-      systemPrompt: local
-        ? `Rate each article's global importance for cybersecurity professionals (1-10).
-10: active 0-day exploit, major breach, critical CVE
-8-9: significant vulnerability, APT campaign, widespread attack
-6-7: notable research, important tool release, industry event
-4-5: minor vulnerability, routine update, niche topic
-1-3: irrelevant, spam, personal blog, generic advice
+      systemPrompt: `You are a news analyst. Rate each article's importance on a 1-10 scale based on global impact, novelty, and relevance.
 
-Return ONLY JSON: {"scores":{"0":8,"1":3,"2":7,...}}`
-        : `You are a cybersecurity threat intelligence analyst. Rate each article's importance on a 1-10 scale based on global impact, urgency, and relevance to cybersecurity professionals.
-
-10: Active 0-day exploitation, critical infrastructure breach, major RCE affecting millions
-8-9: High-severity CVE, active APT campaign, significant data breach, critical patch release
-6-7: Notable security research, important tool/framework release, medium-severity vulnerability
-4-5: Minor vulnerability, routine software update, niche research topic
-1-3: Not cybersecurity related, spam, generic advice, personal blog post
+10: Breaking news with massive global impact, major world event, critical discovery
+8-9: Significant industry development, important policy/regulatory change, major product launch, large-scale incident
+6-7: Notable research or analysis, useful guide, interesting trend, important tool release
+4-5: Routine update, minor news, niche topic, incremental improvement
+1-3: Spam, clickbait, low-quality content, duplicate/rehashed content
 
 Return ONLY JSON: {"scores":{"0":8,"1":3,"2":7,...}} where keys are article indices and values are scores.`,
       userPrompt: `Rate these articles:\n${JSON.stringify(compact)}`,
-      maxTokens: local ? 500 : 800,
+      maxTokens: 800,
     });
 
     const parsed = safeParseJSON(result);
@@ -372,13 +339,11 @@ async function generateDigestFromArticles(
   config: AIConfig,
   articles: ScoredArticle[],
   lang: string,
-  isVuln: boolean,
 ): Promise<DigestItem[]> {
-  const local = isLocal(config);
-  const BATCH = local ? 15 : 40;
+  const BATCH = 40;
   const allItems: DigestItem[] = [];
 
-  const systemPrompt = buildDigestPrompt(lang, isVuln, local);
+  const systemPrompt = buildDigestPrompt(lang);
 
   for (let i = 0; i < articles.length; i += BATCH) {
     const batch = articles.slice(i, i + BATCH);
@@ -389,21 +354,14 @@ async function generateDigestFromArticles(
 
     const userContent = batch.map((a, idx) => {
       const scoreLabel = a.score >= 8 ? "CRITICAL" : a.score >= 6 ? "IMPORTANT" : "NORMAL";
-      if (local) {
-        return `${idx + 1}. [${scoreLabel}][${a.feedTitle}] ${a.title} — ${(a.summary || "").slice(0, 100)} (${a.url})`;
-      }
       return { idx: idx + 1, importance: scoreLabel, score: a.score, title: a.title, summary: (a.summary || "").slice(0, 200), feed: a.feedTitle, url: a.url };
     });
-
-    const userPrompt = local
-      ? `Create briefing for these articles. Items marked CRITICAL are most important. Return ONLY JSON:\n\n${(userContent as string[]).join("\n")}`
-      : `Create briefing from these pre-scored articles. Focus on CRITICAL and IMPORTANT items. Return only JSON:\n\n${JSON.stringify(userContent)}`;
 
     const result = await provider.chat({
       model: config.digestModel,
       systemPrompt,
-      userPrompt,
-      maxTokens: local ? 4000 : 6000,
+      userPrompt: `Create briefing from these pre-scored articles. Focus on CRITICAL and IMPORTANT items. Return only JSON:\n\n${JSON.stringify(userContent)}`,
+      maxTokens: 6000,
     });
 
     const parsed = parseDigestResponse(result);
@@ -413,31 +371,12 @@ async function generateDigestFromArticles(
   return allItems;
 }
 
-function buildDigestPrompt(lang: string, _isVuln: boolean, local: boolean): string {
+function buildDigestPrompt(lang: string): string {
   const langInstruction = lang === "en"
     ? "Write everything in English."
-    : `CRITICAL LANGUAGE RULE: You MUST write ALL headlines and summaries in ${langName(lang)}. Keep only technical terms (CVE IDs, product names, protocol names, APT group names) in English. Everything else MUST be in ${langName(lang)}.`;
+    : `CRITICAL LANGUAGE RULE: You MUST write ALL headlines and summaries in ${langName(lang)}. Keep only proper nouns and technical terms in English. Everything else MUST be in ${langName(lang)}.`;
 
-  if (local) {
-    return `You are a security and technology analyst. Create a briefing from pre-scored articles.
-
-LANGUAGE: ${langInstruction}
-
-Return ONLY valid JSON:
-{"items":[{"headline":"title in ${langName(lang)}","summary":"1-2 sentences in ${langName(lang)}","impact":"critical|high|medium|low|info","url":"source url","tags":["tag1","tag2"]}]}
-
-Articles marked CRITICAL (score 8-10) should be impact "critical" or "high".
-Articles marked IMPORTANT (score 6-7) should be impact "medium" or "high".
-Articles marked NORMAL (score <6) should be impact "low" or "info".
-
-Rules:
-- ${langInstruction}
-- Include CVE numbers in headlines when available
-- Create one item per article, do NOT skip any
-- Tags: include vendor, product, CVE, attack type`;
-  }
-
-  return `You are an experienced analyst creating a technology and security briefing.
+  return `You are an experienced analyst creating a news and technology briefing.
 
 TASK: Create a briefing from pre-scored articles.
 
@@ -448,14 +387,13 @@ OUTPUT: Return only JSON:
 
 SCORING GUIDE:
 - CRITICAL (8-10): Map to impact "critical" or "high"
-- IMPORTANT (6-7): Map to impact "medium" or "high"  
+- IMPORTANT (6-7): Map to impact "medium" or "high"
 - NORMAL (<6): Map to impact "low" or "info"
 
 RULES:
 - ${langInstruction}
-- Include CVE in headline when available
-- Technical detail in summary
-- Tags: CVE, vendor, product, vulnerability type, group name
+- Concise, informative summaries
+- Tags: topic, category, key entities, product names
 - One item per article, do not skip articles
 - Maximum 30 items`;
 }
@@ -470,20 +408,19 @@ export async function generateDailyDigest(
   userId?: string
 ): Promise<StructuredDigestResult[] | null> {
   const config = await getAIConfig(userId);
-  const provider = await createProvider(config.provider, userId);
+  const provider = await createProvider(userId);
   if (!provider) {
     console.error("[Digest] Provider creation failed — API key not configured?");
     return null;
   }
 
-  const local = isLocal(config);
   const lang = language || config.language;
   if (articles.length === 0) {
     console.warn("[Digest] No articles to process");
     return null;
   }
 
-  console.log(`[Pipeline] Starting: ${articles.length} articles, provider=${config.provider}, model=${config.digestModel}`);
+  console.log(`[Pipeline] Starting: ${articles.length} articles, model=${config.digestModel}`);
 
   // ── Stage 1: Score ────────────────────────────────────────────────
   console.log(`[Pipeline] Stage 1: Importance scoring`);
@@ -501,8 +438,8 @@ export async function generateDailyDigest(
   console.log(`[Pipeline] Dedup: ${scored.length} → ${deduped.length} unique`);
 
   // ── Stage 3: Filter by score ──────────────────────────────────────
-  const minScore = local ? 3 : 4;
-  const maxItems = local ? 60 : 80;
+  const minScore = 4;
+  const maxItems = 80;
   const filtered = deduped
     .filter(a => a.score >= minScore)
     .sort((a, b) => b.score - a.score)
@@ -516,8 +453,8 @@ export async function generateDailyDigest(
   }
 
   // ── Stage 4: Generate digest ──────────────────────────────────────
-  console.log(`[Pipeline] Stage 3: Digest generation`);
-  const items = await generateDigestFromArticles(provider, config, filtered, lang, true);
+  console.log(`[Pipeline] Stage 4: Digest generation`);
+  const items = await generateDigestFromArticles(provider, config, filtered, lang);
 
   if (items.length === 0) {
     console.error("[Pipeline] No items produced");
@@ -529,7 +466,6 @@ export async function generateDailyDigest(
 
   return [{
     categoryName: "Daily Briefing",
-    isVuln: true,
     items,
     totalArticles: articles.length,
     filteredArticles: filtered.length,
@@ -542,7 +478,7 @@ export async function generateCategorizedDigest(
   userId?: string
 ): Promise<StructuredDigestResult[] | null> {
   const config = await getAIConfig(userId);
-  const provider = await createProvider(config.provider, userId);
+  const provider = await createProvider(userId);
   if (!provider) return null;
 
   const lang = language || config.language;
@@ -559,19 +495,16 @@ export async function generateCategorizedDigest(
 
     const scored = await scoreArticles(provider, config, catArticles);
     const deduped = deduplicateArticles(scored);
-    const minScore = isLocal(config) ? 3 : 4;
-    const filtered = deduped.filter(a => a.score >= minScore).sort((a, b) => b.score - a.score).slice(0, 40);
+    const filtered = deduped.filter(a => a.score >= 4).sort((a, b) => b.score - a.score).slice(0, 40);
 
     if (filtered.length === 0) continue;
 
-    const isVuln = isVulnCategory(cat.categoryName);
-    const items = await generateDigestFromArticles(provider, config, filtered, lang, isVuln);
+    const items = await generateDigestFromArticles(provider, config, filtered, lang);
 
     if (items.length > 0) {
       items.sort((a, b) => (IMPACT_ORDER[a.impact] ?? 4) - (IMPACT_ORDER[b.impact] ?? 4));
       results.push({
         categoryName: cat.categoryName,
-        isVuln,
         items,
         totalArticles: cat.articles.length,
       });
@@ -590,7 +523,7 @@ export async function suggestCategories(
   userId?: string
 ): Promise<string[]> {
   const config = await getAIConfig(userId);
-  const provider = await createProvider(config.provider, userId);
+  const provider = await createProvider(userId);
   if (!provider) return [];
 
   const result = await provider.chat({

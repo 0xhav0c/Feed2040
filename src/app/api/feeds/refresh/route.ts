@@ -1,18 +1,32 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cacheDel } from "@/lib/redis";
 import { parseFeed } from "@/lib/rss/parser";
 
-export async function POST(): Promise<NextResponse> {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
+    // Support optional feedId body param to refresh a single feed
+    let feedIdFilter: string | undefined;
+    try {
+      const body = await req.json();
+      if (body?.feedId && typeof body.feedId === "string") {
+        feedIdFilter = body.feedId;
+      }
+    } catch {
+      // No body or invalid JSON — refresh all feeds
+    }
+
     const feeds = await prisma.feed.findMany({
-      where: { userId: session.user.id },
+      where: {
+        userId: session.user.id,
+        ...(feedIdFilter ? { id: feedIdFilter } : {}),
+      },
       orderBy: [
         { lastFetched: { sort: "asc", nulls: "first" } },
         { updatedAt: "asc" },
@@ -24,7 +38,7 @@ export async function POST(): Promise<NextResponse> {
     let newArticles = 0;
 
     for (const feed of feeds) {
-      if (feed.errorCount >= 5) continue;
+      if (!feedIdFilter && feed.errorCount >= 5) continue;
 
       try {
         const parsedFeed = await parseFeed(feed.url);

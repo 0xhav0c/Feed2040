@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { parseFeed } from "@/lib/rss/parser";
-import { scrapeFullText } from "@/lib/rss/scraper";
 import { cacheDel } from "@/lib/redis";
 import { getBot } from "@/lib/telegram/bot";
 import { verifyCronAuth } from "@/lib/cron-auth";
+import { refreshFeed, runWithConcurrency } from "@/lib/rss/refresh";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!verifyCronAuth(req)) {
@@ -22,9 +21,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         description: true,
         imageUrl: true,
         language: true,
+        faviconUrl: true,
         scrapeFullText: true,
         refreshInterval: true,
         lastFetched: true,
+        userId: true,
       },
       orderBy: [
         { lastFetched: { sort: "asc", nulls: "first" } },
@@ -36,76 +37,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let updated = 0;
     let failed = 0;
     const refreshStartedAt = new Date();
-
-    for (const feed of feeds) {
+    const feedsToRefresh = feeds.filter((feed) => {
       if (feed.refreshInterval && feed.lastFetched) {
         const nextRefresh = new Date(feed.lastFetched.getTime() + feed.refreshInterval * 60_000);
-        if (new Date() < nextRefresh) continue;
+        if (new Date() < nextRefresh) return false;
       }
+      return true;
+    });
 
+    await runWithConcurrency(feedsToRefresh, 5, async (feed) => {
       try {
-        const parsed = await parseFeed(feed.url);
-
-        const existingGuids = new Set<string>();
-        if (parsed.items.length > 0) {
-          const existing = await prisma.article.findMany({
-            where: { feedId: feed.id },
-            select: { guid: true },
-          });
-          for (const a of existing) {
-            if (a.guid) existingGuids.add(a.guid);
-          }
-        }
-
-        const newItems = parsed.items
-          .slice(0, 50)
-          .filter((item) => !item.guid || !existingGuids.has(item.guid));
-
-        if (newItems.length > 0) {
-          const itemsData = [];
-          for (const item of newItems) {
-            let content = item.content;
-            if (feed.scrapeFullText && item.url) {
-              const scraped = await scrapeFullText(item.url);
-              if (scraped) content = scraped;
-            }
-
-            itemsData.push({
-              title: item.title,
-              url: item.url,
-              content,
-              summary: item.summary,
-              author: item.author,
-              imageUrl: item.imageUrl,
-              publishedAt: item.publishedAt,
-              guid: item.guid,
-              feedId: feed.id,
-              enclosureUrl: item.enclosureUrl,
-              enclosureType: item.enclosureType,
-              enclosureDuration: item.enclosureDuration,
-            });
-          }
-
-          const result = await prisma.article.createMany({
-            data: itemsData,
-            skipDuplicates: true,
-          });
-          newArticles += result.count;
-        }
-
-        await prisma.feed.update({
-          where: { id: feed.id },
-          data: {
-            title: parsed.title || feed.title,
-            siteUrl: parsed.siteUrl || feed.siteUrl,
-            description: parsed.description || feed.description,
-            imageUrl: parsed.imageUrl || feed.imageUrl,
-            language: parsed.language || feed.language,
-            lastFetched: new Date(),
-            fetchError: null,
-            errorCount: 0,
-          },
-        });
+        const result = await refreshFeed(feed);
+        newArticles += result.newArticles;
         updated++;
       } catch (err) {
         failed++;
@@ -120,17 +63,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           },
         });
       }
-    }
+    });
 
     if (updated > 0) await cacheDel("sidebar:*");
 
     console.log(
-      `[Cron] Refreshed ${updated}/${feeds.length} feeds, ${newArticles} new articles, ${failed} failed`
+      `[Cron] Refreshed ${updated}/${feedsToRefresh.length} feeds, ${newArticles} new articles, ${failed} failed`
     );
 
     if (newArticles > 0) {
       try {
-        await checkNotificationRules(feeds.map((f: (typeof feeds)[number]) => f.id), refreshStartedAt);
+        await checkNotificationRules(feedsToRefresh.map((f) => f.id), refreshStartedAt);
       } catch (err) {
         console.error("[Cron] Notification check error:", err);
       }
@@ -175,7 +118,7 @@ async function checkNotificationRules(feedIds: string[], since: Date) {
       where: { userId, isActive: true },
     });
 
-      for (const rule of rules) {
+    for (const rule of rules) {
       const matched = articles.filter((art: (typeof recentArticles)[number]) => {
         const text = `${art.title} ${art.summary || ""}`.toLowerCase();
         return rule.keywords.some((kw: string) => text.includes(kw.toLowerCase()));
@@ -203,7 +146,6 @@ async function checkNotificationRules(feedIds: string[], since: Date) {
               // @ts-expect-error Telegraf typing quirk
               disable_web_page_preview: true,
             });
-            console.log(`[Notify] Telegram alert sent for rule "${rule.name}" to chat ${telegramSettings.chatId}`);
           } catch (err) {
             console.error(`[Notify] Failed to send Telegram alert to ${userId}:`, err);
           }

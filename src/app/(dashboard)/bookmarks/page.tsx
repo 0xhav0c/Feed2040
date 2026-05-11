@@ -23,6 +23,10 @@ export default function BookmarksPage() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    document.title = "Bookmarks | Feed2040";
+  }, []);
+
+  useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/articles/bookmarks");

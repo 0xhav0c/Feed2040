@@ -23,7 +23,6 @@ import {
   Trash2,
   ExternalLink,
   Shield,
-  Cpu,
   AlertTriangle,
   Zap,
   Server,
@@ -43,7 +42,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UsersAdminTab } from "@/components/settings/UsersAdminTab";
-import { OpenAIIcon, AnthropicIcon, OllamaIcon, TelegramIcon } from "@/components/icons/BrandIcons";
+import { TelegramIcon } from "@/components/icons/BrandIcons";
 
 const BASE_TABS = [
   { id: "general", label: "General", icon: User },
@@ -55,39 +54,6 @@ const BASE_TABS = [
 ];
 
 const ADMIN_TAB = { id: "users", label: "Users", icon: Users };
-
-type TabId = string;
-
-const PROVIDERS = [
-  { value: "openai", label: "OpenAI", icon: OpenAIIcon, color: "text-[#10a37f]", description: "GPT-4o, GPT-4.1 models" },
-  { value: "anthropic", label: "Anthropic", icon: AnthropicIcon, color: "text-[#d4a27f]", description: "Claude Sonnet, Opus" },
-  { value: "ollama", label: "Ollama", icon: OllamaIcon, color: "text-white", description: "Local AI — free, private" },
-];
-
-const PROVIDER_MODELS: Record<
-  string,
-  { value: string; label: string; tier: "fast" | "balanced" | "powerful" }[]
-> = {
-  openai: [
-    { value: "gpt-4.1-nano", label: "GPT-4.1 Nano", tier: "fast" },
-    { value: "gpt-4o-mini", label: "GPT-4o Mini", tier: "fast" },
-    { value: "gpt-4.1-mini", label: "GPT-4.1 Mini", tier: "balanced" },
-    { value: "gpt-4o", label: "GPT-4o", tier: "powerful" },
-    { value: "gpt-4.1", label: "GPT-4.1", tier: "powerful" },
-  ],
-  anthropic: [
-    { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", tier: "fast" },
-    { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", tier: "balanced" },
-    { value: "claude-opus-4-6", label: "Claude Opus 4.6", tier: "powerful" },
-  ],
-  ollama: [],
-};
-
-const TIER_BADGES: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" | "ghost" | "link"; className?: string }> = {
-  fast: { label: "Fast", variant: "secondary", className: "bg-green-500/10 text-green-600 border-transparent" },
-  balanced: { label: "Balanced", variant: "secondary", className: "bg-blue-500/10 text-blue-600 border-transparent" },
-  powerful: { label: "Powerful", variant: "secondary", className: "bg-purple-500/10 text-purple-600 border-transparent" },
-};
 
 const LANGUAGES = [
   { value: "en", label: "🇬🇧 English" },
@@ -125,6 +91,15 @@ const INTERVAL_OPTIONS = [
   { value: 1440, label: "Once a day" },
 ];
 
+const RETENTION_OPTIONS = [
+  { value: 0, label: "Never" },
+  { value: 30, label: "30 days" },
+  { value: 60, label: "60 days" },
+  { value: 90, label: "90 days" },
+  { value: 180, label: "180 days" },
+  { value: 365, label: "1 year" },
+];
+
 type KeyInfo = {
   configured: boolean;
   source: "user" | "instance" | "app" | "env" | null;
@@ -148,6 +123,10 @@ function SettingsContent() {
   const tabParam = searchParams.get("tab") || "general";
   const resolvedTab = validIds.includes(tabParam) ? tabParam : "general";
   const [activeTab, setActiveTab] = useState(resolvedTab);
+
+  useEffect(() => {
+    document.title = "Settings | Feed2040";
+  }, []);
 
   useEffect(() => {
     const tp = searchParams.get("tab") || "general";
@@ -368,20 +347,76 @@ function SecretKeyInput({
   );
 }
 
+// ── Feed Health types ───────────────────────────────────────────────
+type FeedHealthEntry = {
+  id: string;
+  title: string;
+  errorCount: number;
+  fetchError: string | null;
+  lastFetched: string | null;
+};
+
 // ── General Settings ─────────────────────────────────────────────────
 function GeneralSettings() {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [interval, setInterval] = useState(15);
   const [concurrency, setConcurrency] = useState(3);
+  const [retentionDays, setRetentionDays] = useState(0);
   const [translateLang, setTranslateLang] = useState("tr");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [unhealthyFeeds, setUnhealthyFeeds] = useState<FeedHealthEntry[]>([]);
+  const [feedHealthLoading, setFeedHealthLoading] = useState(true);
+  const [retryingFeedId, setRetryingFeedId] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("translateLanguage");
     if (stored) setTranslateLang(stored);
   }, []);
+
+  const fetchFeedHealth = useCallback(async () => {
+    setFeedHealthLoading(true);
+    try {
+      const res = await fetch("/api/feeds");
+      const data = await res.json();
+      if (res.ok && data.data) {
+        const unhealthy = (data.data as FeedHealthEntry[]).filter(
+          (f) => f.errorCount > 0
+        );
+        setUnhealthyFeeds(unhealthy);
+      }
+    } catch {
+      /* silent */
+    } finally {
+      setFeedHealthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFeedHealth();
+  }, [fetchFeedHealth]);
+
+  async function handleRetryFeed(feedId: string) {
+    setRetryingFeedId(feedId);
+    try {
+      const res = await fetch("/api/feeds/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedId }),
+      });
+      if (res.ok) {
+        toast.success("Feed refresh triggered");
+        await fetchFeedHealth();
+      } else {
+        toast.error("Failed to refresh feed");
+      }
+    } catch {
+      toast.error("Failed to refresh feed");
+    } finally {
+      setRetryingFeedId(null);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -399,6 +434,7 @@ function GeneralSettings() {
         if (refreshRes.ok && refreshData.data) {
           setInterval(refreshData.data.intervalMinutes ?? 15);
           setConcurrency(refreshData.data.importConcurrency ?? 3);
+          setRetentionDays(refreshData.data.retentionDays ?? 0);
         }
       } catch {
         /* silent */
@@ -420,7 +456,7 @@ function GeneralSettings() {
         fetch("/api/settings/refresh", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ intervalMinutes: interval, importConcurrency: concurrency }),
+          body: JSON.stringify({ intervalMinutes: interval, importConcurrency: concurrency, retentionDays }),
         }),
       ]);
       localStorage.setItem("translateLanguage", translateLang);
@@ -432,91 +468,171 @@ function GeneralSettings() {
     }
   }
 
+  const [retryingAll, setRetryingAll] = useState(false);
+
+  async function handleRetryAll() {
+    setRetryingAll(true);
+    try {
+      await Promise.all(unhealthyFeeds.map((f) =>
+        fetch("/api/feeds/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feedId: f.id }) })
+      ));
+      toast.success("All feeds retried");
+      await fetchFeedHealth();
+    } catch {
+      toast.error("Failed to retry");
+    } finally {
+      setRetryingAll(false);
+    }
+  }
+
+  async function handleRemoveFeed(feedId: string) {
+    try {
+      const res = await fetch(`/api/feeds/${feedId}`, { method: "DELETE" });
+      if (res.ok) { toast.success("Feed removed"); fetchFeedHealth(); }
+      else toast.error("Failed to remove feed");
+    } catch { toast.error("Failed to remove feed"); }
+  }
+
   if (loading)
     return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton className="rounded-2xl h-48" />
-          <Skeleton className="rounded-2xl h-48" />
-        </div>
-        <Skeleton className="h-10 w-32" />
+      <div className="space-y-4">
+        <Skeleton className="rounded-2xl h-64" />
+        <Skeleton className="rounded-2xl h-32" />
       </div>
     );
 
+  const totalFeeds = unhealthyFeeds.length;
+  const selectClass = "w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50";
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="space-y-4">
+      {/* Main settings card */}
       <Card className="rounded-2xl border border-border bg-card">
-        <CardContent className="p-6">
-          <SectionTitle icon={User} title="Profile" description="Your account details" />
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Username</label>
-              <Input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="rounded-xl" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Display Name</label>
-              <Input type="text" value={name} onChange={(e) => setName(e.target.value)} className="rounded-xl" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-2xl border border-border bg-card">
-        <CardContent className="p-6">
-          <SectionTitle icon={RefreshCw} title="Feed Refresh" description="How often feeds are checked" />
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1.5 flex items-center gap-2 text-sm font-medium"><Clock size={14} /> Refresh Interval</label>
-              <select value={interval} onChange={(e) => setInterval(parseInt(e.target.value, 10))} className="w-full rounded-xl border border-input bg-transparent px-3 py-2.5 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50">
-                {INTERVAL_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 flex items-center gap-2 text-sm font-medium"><Upload size={14} /> Import Concurrency</label>
-              <div className="flex items-center gap-3">
-                <input type="range" min={1} max={10} value={concurrency} onChange={(e) => setConcurrency(parseInt(e.target.value, 10))} className="flex-1 accent-primary" />
-                <span className="w-8 text-center text-sm font-bold">{concurrency}</span>
+        <CardContent className="p-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-5">
+            {/* Profile */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><User size={14} className="text-muted-foreground" /> Profile</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Username</label>
+                  <Input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="rounded-lg h-9 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Display Name</label>
+                  <Input type="text" value={name} onChange={(e) => setName(e.target.value)} className="rounded-lg h-9 text-sm" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Parallel feeds during OPML import</p>
+            </div>
+
+            {/* Feed Settings */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><RefreshCw size={14} className="text-muted-foreground" /> Feed Settings</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Refresh Interval</label>
+                  <select value={interval} onChange={(e) => setInterval(parseInt(e.target.value, 10))} className={selectClass}>
+                    {INTERVAL_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Article Retention</label>
+                  <select value={retentionDays} onChange={(e) => setRetentionDays(parseInt(e.target.value, 10))} className={selectClass}>
+                    {RETENTION_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Import Concurrency</label>
+                <div className="flex items-center gap-3">
+                  <input type="range" min={1} max={10} value={concurrency} onChange={(e) => setConcurrency(parseInt(e.target.value, 10))} className="flex-1 accent-primary" />
+                  <span className="w-6 text-center text-xs font-bold">{concurrency}</span>
+                </div>
+              </div>
+            </div>
+
+            <Separator className="lg:col-span-2" />
+
+            {/* Translation */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Globe size={14} className="text-muted-foreground" /> Translation</h3>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Default Language</label>
+                <select value={translateLang} onChange={(e) => { setTranslateLang(e.target.value); localStorage.setItem("translateLanguage", e.target.value); }} className={selectClass}>
+                  {LANGUAGES.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                </select>
+              </div>
+            </div>
+
+            {/* Change Password */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Lock size={14} className="text-muted-foreground" /> Change Password</h3>
+              <ChangePasswordForm />
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      <Card className="rounded-2xl border border-border bg-card lg:col-span-2">
-        <CardContent className="p-6">
-          <SectionTitle icon={Globe} title="Translation" description="Default language for article translation" />
-          <div className="max-w-sm">
-            <label className="mb-1.5 block text-sm font-medium">Preferred Language</label>
-            <p className="text-xs text-muted-foreground mb-2">Articles will be translated to this language by default</p>
-            <select
-              value={translateLang}
-              onChange={(e) => {
-                setTranslateLang(e.target.value);
-                localStorage.setItem("translateLanguage", e.target.value);
-              }}
-              className="w-full rounded-xl border border-input bg-transparent px-3 py-2.5 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50"
-            >
-              {LANGUAGES.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+          <Separator className="my-4" />
+
+          {/* Feed Health — compact */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <AlertTriangle size={14} className="text-muted-foreground" /> Feed Health
+              </h3>
+              {feedHealthLoading ? (
+                <Skeleton className="h-5 w-24 rounded" />
+              ) : (
+                <div className="flex items-center gap-3">
+                  {totalFeeds > 0 && (
+                    <Button variant="ghost" size="sm" onClick={handleRetryAll} disabled={retryingAll} className="h-7 text-xs px-2">
+                      {retryingAll ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                      Retry All
+                    </Button>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {totalFeeds === 0 ? (
+                      <span className="text-green-600 flex items-center gap-1"><CheckCircle2 size={12} /> All healthy</span>
+                    ) : (
+                      <span className="text-red-500">{totalFeeds} feed{totalFeeds > 1 ? "s" : ""} with errors</span>
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {!feedHealthLoading && unhealthyFeeds.length > 0 && (
+              <div className="rounded-lg border border-border overflow-hidden">
+                {unhealthyFeeds
+                  .sort((a, b) => b.errorCount - a.errorCount)
+                  .map((feed, i) => (
+                  <div key={feed.id} className={cn("flex items-center gap-3 px-3 py-2 text-sm", i > 0 && "border-t border-border")}>
+                    <AlertTriangle size={12} className="text-red-500 shrink-0" />
+                    <span className="font-medium truncate flex-1 min-w-0" title={feed.title}>{feed.title}</span>
+                    <span className="text-xs text-muted-foreground truncate max-w-[200px] hidden sm:block" title={feed.fetchError || ""}>{feed.fetchError || "Unknown"}</span>
+                    <Badge variant="secondary" className="bg-red-500/10 text-red-500 border-transparent text-[10px] shrink-0">{feed.errorCount}x</Badge>
+                    <div className="flex gap-1 shrink-0">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRetryFeed(feed.id)} disabled={retryingFeedId === feed.id}>
+                        {retryingFeedId === feed.id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveFeed(feed.id)}>
+                        <Trash2 size={12} />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Separator className="my-4" />
+
+          <div className="flex justify-end">
+            <Button onClick={handleSave} disabled={saving} size="sm">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save Changes
+            </Button>
           </div>
         </CardContent>
       </Card>
-
-      <Card className="rounded-2xl border border-border bg-card lg:col-span-2">
-        <CardContent className="p-6">
-          <SectionTitle icon={Lock} title="Change Password" description="Update your account password" />
-          <ChangePasswordForm />
-        </CardContent>
-      </Card>
-
-      <div className="lg:col-span-2">
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save Changes
-        </Button>
-      </div>
     </div>
   );
 }
@@ -592,220 +708,79 @@ function ChangePasswordForm() {
   );
 }
 
-// ── Ollama Connection Wizard ────────────────────────────────────────
-function OllamaWizard({
-  baseUrl,
-  setBaseUrl,
-  status,
-  models,
-  onTest,
-  testing,
-}: {
-  baseUrl: string;
-  setBaseUrl: (v: string) => void;
-  status: "unknown" | "connected" | "error";
-  models: string[];
-  onTest: () => void;
-  testing: boolean;
-}) {
-  const isDocker = typeof window !== "undefined" && (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1");
 
-  return (
-    <Card className="rounded-2xl border border-border bg-card">
-      <CardContent className="p-6">
-        <SectionTitle icon={Server} title="Ollama Connection" description="Connect to your local Ollama server" />
-
-        {isDocker && status !== "connected" && (
-          <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 flex items-start gap-3">
-            <AlertTriangle size={16} className="text-amber-500 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-amber-700">Docker detected</p>
-              <p className="text-xs text-amber-600 mt-1">
-                Feed2040 is running in Docker. Use your host machine IP instead of <code className="bg-amber-200/30 px-1 rounded">localhost</code>.
-                Try one of these:
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {["http://host.docker.internal:11434/v1", "http://172.17.0.1:11434/v1"].map((url) => (
-                  <Button
-                    key={url}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setBaseUrl(url)}
-                    className="rounded-lg border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 text-[11px] font-mono h-auto py-1"
-                  >
-                    {url}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Server URL</label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Server size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
-                <Input
-                  type="text"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="http://localhost:11434/v1"
-                  className="pl-9 rounded-xl py-2.5 h-auto font-mono"
-                />
-              </div>
-              <Button
-                type="button"
-                onClick={onTest}
-                disabled={testing}
-                variant={status === "connected" ? "outline" : "default"}
-                className={cn(
-                  status === "connected" && "bg-green-500/10 text-green-600 border-green-500/30 hover:bg-green-500/20 hover:text-green-700"
-                )}
-              >
-                {testing ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : status === "connected" ? (
-                  <CheckCircle2 size={14} />
-                ) : (
-                  <Zap size={14} />
-                )}
-                {status === "connected" ? "Connected" : "Test Connection"}
-              </Button>
-            </div>
-          </div>
-
-          {status === "connected" && (
-            <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle2 size={16} className="text-green-500" />
-                <span className="text-sm font-medium text-green-700">Connected to Ollama</span>
-              </div>
-              <p className="text-xs text-green-600">
-                {models.length} model{models.length !== 1 ? "s" : ""} available: {models.join(", ")}
-              </p>
-            </div>
-          )}
-
-          {status === "error" && (
-            <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle size={16} className="text-red-500" />
-                <span className="text-sm font-medium text-red-700">Connection failed</span>
-              </div>
-              <p className="text-xs text-red-600">
-                Cannot reach Ollama at the specified URL. Make sure Ollama is running
-                and the URL is correct.
-              </p>
-              <div className="mt-3 space-y-1 text-xs text-red-600/80">
-                <p>Troubleshooting:</p>
-                <ul className="list-disc pl-4 space-y-0.5">
-                  <li>Check if Ollama is running: <code className="bg-red-200/30 px-1 rounded">ollama list</code></li>
-                  <li>If Docker: use host IP, not localhost</li>
-                  <li>Ensure Ollama allows external connections: <code className="bg-red-200/30 px-1 rounded">OLLAMA_HOST=0.0.0.0 ollama serve</code></li>
-                </ul>
-              </div>
-            </div>
-          )}
-
-          <a href="https://ollama.com/library" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-            <ExternalLink size={10} /> Browse available models on Ollama
-          </a>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ── Model Selector (grid layout) ────────────────────────────────────
+// ── Model Selector ──────────────────────────────────────────────────
 function ModelSelector({
-  label, description, provider, value, onChange, icon, ollamaModels,
+  label, description, value, onChange, icon, remoteModels,
 }: {
-  label: string; description: string; provider: string; value: string;
-  onChange: (v: string) => void; icon?: React.ReactNode; ollamaModels?: string[];
+  label: string; description: string; value: string;
+  onChange: (v: string) => void; icon?: React.ReactNode;
+  remoteModels?: string[];
 }) {
-  if (provider === "ollama") {
-    const available = ollamaModels || [];
+  const GROUP_LABELS: Record<string, string> = {
+    openai: "OpenAI", anthropic: "Anthropic", google: "Google", meta: "Meta",
+    mistral: "Mistral", cohere: "Cohere", deepseek: "DeepSeek", groq: "Groq",
+    together: "Together AI", perplexity: "Perplexity", other: "Other",
+  };
+
+  if (remoteModels && remoteModels.length > 0) {
+    const groups = new Map<string, string[]>();
+    for (const m of remoteModels) {
+      const slashIdx = m.indexOf("/");
+      const group = slashIdx > 0 ? m.slice(0, slashIdx) : "other";
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group)!.push(m);
+    }
+    const sortedGroups = [...groups.entries()].sort((a, b) =>
+      (a[0] === "other" ? 1 : 0) - (b[0] === "other" ? 1 : 0) || a[0].localeCompare(b[0])
+    );
+
     return (
       <div>
         <label className="mb-1 flex items-center gap-2 text-sm font-medium">{icon} {label}</label>
         <p className="text-xs text-muted-foreground mb-3">{description}</p>
-        {available.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {available.map((m) => {
-              const selected = value === m;
-              return (
-                <Button key={m} type="button" variant="outline" onClick={() => onChange(m)}
-                  className={cn(
-                    "flex items-center justify-between rounded-xl px-4 py-3 h-auto text-sm transition-all text-left",
-                    selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border hover:border-primary/30 hover:bg-muted/50"
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className={cn("h-2 w-2 rounded-full", selected ? "bg-primary" : "bg-muted-foreground/30")} />
-                    <span className={cn("font-mono text-xs", selected && "font-medium")}>{m}</span>
-                  </div>
-                  <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-transparent text-[10px]">Local</Badge>
-                </Button>
-              );
-            })}
-          </div>
-        ) : (
-          <Input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder="e.g. qwen3.5:9b" className="font-mono rounded-xl" />
-        )}
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-xl border border-input bg-transparent px-3 py-2.5 text-sm font-mono focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50"
+        >
+          {!remoteModels.includes(value) && value && (
+            <option value={value}>{value}</option>
+          )}
+          {sortedGroups.map(([group, models]) => (
+            <optgroup key={group} label={GROUP_LABELS[group] || group.charAt(0).toUpperCase() + group.slice(1)}>
+              {models.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
       </div>
     );
   }
 
-  const models = PROVIDER_MODELS[provider] || [];
   return (
     <div>
       <label className="mb-1 flex items-center gap-2 text-sm font-medium">{icon} {label}</label>
       <p className="text-xs text-muted-foreground mb-3">{description}</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {models.map((m) => {
-          const badge = TIER_BADGES[m.tier];
-          const selected = value === m.value;
-          return (
-            <Button key={m.value} type="button" variant="outline" onClick={() => onChange(m.value)}
-              className={cn(
-                "flex items-center justify-between rounded-xl px-4 py-3 h-auto text-sm transition-all text-left",
-                selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border hover:border-primary/30 hover:bg-muted/50"
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <div className={cn("h-2 w-2 rounded-full", selected ? "bg-primary" : "bg-muted-foreground/30")} />
-                <span className={selected ? "font-medium" : ""}>{m.label}</span>
-              </div>
-              <Badge variant="secondary" className={cn("text-[10px]", badge.className)}>{badge.label}</Badge>
-            </Button>
-          );
-        })}
-      </div>
+      <p className="text-xs text-muted-foreground italic">Enter your API Base URL above and click &quot;Fetch Models&quot; to load available models.</p>
     </div>
   );
 }
 
 // ── AI Settings Tab ──────────────────────────────────────────────────
 function AISettingsTab() {
-  const [provider, setProvider] = useState("openai");
-  const [savedProvider, setSavedProvider] = useState("openai");
   const [model, setModel] = useState("gpt-4o-mini");
   const [digestModel, setDigestModel] = useState("gpt-4o");
   const [language, setLanguage] = useState("en");
-  const [autoSummarize, setAutoSummarize] = useState(false);
-  const [openaiKeyInfo, setOpenaiKeyInfo] = useState<KeyInfo | null>(null);
-  const [anthropicKeyInfo, setAnthropicKeyInfo] = useState<KeyInfo | null>(null);
-  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434/v1");
-  const [ollamaStatus, setOllamaStatus] = useState<"unknown" | "connected" | "error">("unknown");
-  const [ollamaTesting, setOllamaTesting] = useState(false);
-  const [openaiBaseUrl, setOpenaiBaseUrl] = useState("");
-  const [anthropicBaseUrl, setAnthropicBaseUrl] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
+  const [remoteModels, setRemoteModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<{ success: boolean; model?: string; responseTime?: number; responsePreview?: string; error?: string } | null>(null);
 
   const [briefingEnabled, setBriefingEnabled] = useState(false);
   const [briefingTimes, setBriefingTimes] = useState<string[]>([]);
@@ -814,28 +789,34 @@ function AISettingsTab() {
   const [briefingCategories, setBriefingCategories] = useState<string[]>([]);
   const [allCategories, setAllCategories] = useState<{ id: string; name: string }[]>([]);
 
-  const testOllamaConnection = useCallback(async (baseUrl: string) => {
-    setOllamaTesting(true);
+  const fetchRemoteModels = useCallback(async (url: string) => {
+    if (!url) { setRemoteModels([]); return; }
+    setFetchingModels(true);
     try {
-      const res = await fetch("/api/settings/ai/test-ollama", {
+      const res = await fetch("/api/settings/ai/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseUrl }),
+        body: JSON.stringify({ baseUrl: url }),
       });
       const data = await res.json();
       if (res.ok && data.data?.models) {
-        setOllamaModels(data.data.models);
-        setOllamaStatus("connected");
-        return data.data.models as string[];
+        setRemoteModels(data.data.models);
+      } else {
+        setRemoteModels([]);
       }
-      setOllamaStatus("error");
     } catch {
-      setOllamaStatus("error");
-      setOllamaModels([]);
+      setRemoteModels([]);
     } finally {
-      setOllamaTesting(false);
+      setFetchingModels(false);
     }
-    return [] as string[];
+  }, []);
+
+  const refreshKeyInfo = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings/keys");
+      const data = await res.json();
+      if (res.ok && data.data?.openai) setKeyInfo(data.data.openai);
+    } catch { /* silent */ }
   }, []);
 
   useEffect(() => {
@@ -853,29 +834,20 @@ function AISettingsTab() {
         const catsData = await catsRes.json();
 
         if (aiRes.ok && aiData.data) {
-          const p = aiData.data.provider || "openai";
-          setProvider(p);
-          setSavedProvider(p);
           setModel(aiData.data.model || "gpt-4o-mini");
           setDigestModel(aiData.data.digestModel || "gpt-4o");
           setLanguage(aiData.data.language || "en");
-          setAutoSummarize(aiData.data.autoSummarize ?? false);
-          const savedUrl = aiData.data.ollamaBaseUrl || "http://localhost:11434/v1";
-          setOllamaBaseUrl(savedUrl);
-          setOpenaiBaseUrl(aiData.data.openaiBaseUrl || "");
-          setAnthropicBaseUrl(aiData.data.anthropicBaseUrl || "");
-          if (p === "ollama") {
-            testOllamaConnection(savedUrl);
-          }
+          const savedUrl = aiData.data.baseUrl || "";
+          setBaseUrl(savedUrl);
+          if (savedUrl) fetchRemoteModels(savedUrl);
           setBriefingEnabled(aiData.data.briefingEnabled ?? false);
           setBriefingTimes(aiData.data.briefingTimes ?? []);
           setBriefingTimezone(aiData.data.briefingTimezone || "Europe/Istanbul");
           setBriefingHours(aiData.data.briefingHours ?? 24);
           setBriefingCategories(aiData.data.briefingCategories ?? []);
         }
-        if (keysRes.ok && keysData.data) {
-          if (keysData.data.openai) setOpenaiKeyInfo(keysData.data.openai);
-          if (keysData.data.anthropic) setAnthropicKeyInfo(keysData.data.anthropic);
+        if (keysRes.ok && keysData.data?.openai) {
+          setKeyInfo(keysData.data.openai);
         }
         if (catsRes.ok && catsData.data) {
           const flat: { id: string; name: string }[] = [];
@@ -896,63 +868,47 @@ function AISettingsTab() {
     }
     init();
     return () => { cancelled = true; };
-  }, [testOllamaConnection]);
+  }, [fetchRemoteModels, refreshKeyInfo]);
 
-  const refreshKeyInfo = useCallback(async () => {
+  async function handleTestAI() {
+    setAiTesting(true);
+    setAiTestResult(null);
     try {
-      const res = await fetch("/api/settings/keys");
+      const res = await fetch("/api/settings/ai/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, baseUrl: baseUrl || undefined }),
+      });
       const data = await res.json();
       if (res.ok && data.data) {
-        if (data.data.openai) setOpenaiKeyInfo(data.data.openai);
-        if (data.data.anthropic) setAnthropicKeyInfo(data.data.anthropic);
+        setAiTestResult({ success: true, ...data.data });
+        toast.success(`Model responded in ${data.data.responseTime}ms`);
+      } else {
+        setAiTestResult({ success: false, error: data.error || "Test failed" });
+        toast.error(data.error || "Test failed");
       }
-    } catch { /* silent */ }
-  }, []);
-
-  function handleKeySaved() {
-    refreshKeyInfo();
-  }
-
-  function handleProviderChange(newProvider: string) {
-    setProvider(newProvider);
-    if (newProvider === "ollama") {
-      testOllamaConnection(ollamaBaseUrl).then((models) => {
-        if (models.length > 0) {
-          setModel(models[0]);
-          setDigestModel(models[0]);
-        }
-      });
-      return;
-    }
-    const models = PROVIDER_MODELS[newProvider];
-    if (models && newProvider !== savedProvider) {
-      const fast = models.find((m) => m.tier === "fast");
-      const powerful = models.find((m) => m.tier === "powerful" || m.tier === "balanced");
-      if (fast) setModel(fast.value);
-      if (powerful) setDigestModel(powerful.value);
+    } catch {
+      setAiTestResult({ success: false, error: "Connection failed" });
+      toast.error("Connection failed");
+    } finally {
+      setAiTesting(false);
     }
   }
 
   async function handleSave() {
     setSaving(true);
     try {
-      const payload: Record<string, unknown> = {
-        provider, model, digestModel, language, autoSummarize,
-        briefingEnabled, briefingTimes, briefingTimezone, briefingHours, briefingCategories,
-      };
-      if (provider === "ollama") payload.ollamaBaseUrl = ollamaBaseUrl;
-      if (openaiBaseUrl) payload.openaiBaseUrl = openaiBaseUrl;
-      else payload.openaiBaseUrl = null;
-      if (anthropicBaseUrl) payload.anthropicBaseUrl = anthropicBaseUrl;
-      else payload.anthropicBaseUrl = null;
       const res = await fetch("/api/settings/ai", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          model, digestModel, language,
+          baseUrl: baseUrl || null,
+          briefingEnabled, briefingTimes, briefingTimezone, briefingHours, briefingCategories,
+        }),
       });
       if (res.ok) {
         toast.success("AI settings saved");
-        setSavedProvider(provider);
       } else {
         const d = await res.json();
         toast.error(d.error);
@@ -967,136 +923,129 @@ function AISettingsTab() {
   if (loading)
     return (
       <div className="space-y-6">
-        <Skeleton className="rounded-2xl h-64" />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton className="rounded-2xl h-48" />
-          <Skeleton className="rounded-2xl h-48" />
-        </div>
+        <Skeleton className="rounded-2xl h-48" />
+        <Skeleton className="rounded-2xl h-48" />
         <Skeleton className="rounded-2xl h-48" />
       </div>
     );
 
-  const isOllama = provider === "ollama";
-  const isKeyConfigured = isOllama ? ollamaStatus === "connected" : (provider === "openai" ? openaiKeyInfo?.configured : anthropicKeyInfo?.configured);
-
-  const providerMeta: Record<string, { label: string; desc: string; placeholder: string; key: string; helpUrl: string; helpLabel: string }> = {
-    openai: { label: "OpenAI API Key", desc: "Required to use GPT models", placeholder: "sk-...", key: "openai_api_key", helpUrl: "https://platform.openai.com/api-keys", helpLabel: "Get your API key from OpenAI" },
-    anthropic: { label: "Anthropic API Key", desc: "Required to use Claude models", placeholder: "sk-ant-...", key: "anthropic_api_key", helpUrl: "https://console.anthropic.com/settings/keys", helpLabel: "Get your API key from Anthropic" },
-  };
-
   return (
     <div className="space-y-6">
-      {/* Provider Selection */}
+      {/* API Connection */}
       <Card className="rounded-2xl border border-border bg-card">
         <CardContent className="p-6">
-          <SectionTitle icon={Cpu} title="AI Provider" description="Choose which AI service to use for summarization and digests" />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {PROVIDERS.map((p) => {
-              const isSelected = provider === p.value;
-              const ki = p.value === "ollama"
-                ? ollamaStatus === "connected"
-                : p.value === "openai" ? openaiKeyInfo?.configured : anthropicKeyInfo?.configured;
-              return (
-                <Button
-                  key={p.value}
-                  type="button"
-                  variant="outline"
-                  onClick={() => handleProviderChange(p.value)}
-                  className={cn(
-                    "relative flex flex-col items-center gap-2 rounded-xl p-5 h-auto text-sm transition-all",
-                    isSelected
-                      ? "border-primary bg-primary/5 ring-2 ring-primary/20 shadow-sm"
-                      : "border-border hover:border-primary/30 hover:bg-muted/50"
-                  )}
-                >
-                  <p.icon size={32} className={p.color} />
-                  <span className={cn("font-medium", isSelected && "font-semibold")}>{p.label}</span>
-                  <span className="text-[11px] text-muted-foreground">{p.description}</span>
-                  {ki ? (
-                    <span className="flex items-center gap-1 text-[10px] text-green-600 mt-1">
-                      <CheckCircle2 size={10} /> {p.value === "ollama" ? "Connected" : "Key set"}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-muted-foreground mt-1">
-                      {p.value === "ollama" ? "Not connected" : "Key not set"}
-                    </span>
-                  )}
-                </Button>
-              );
-            })}
+          <SectionTitle icon={Key} title="API Connection" description="Configure your AI provider credentials" />
+          <SecretKeyInput
+            label="API Key"
+            description="Your OpenAI, proxy, or compatible API key"
+            placeholder="sk-..."
+            settingKey="openai_api_key"
+            keyInfo={keyInfo}
+            onSaved={refreshKeyInfo}
+          />
+          <Separator className="my-4" />
+          <div className="space-y-2">
+            <label className="text-sm font-medium">API Base URL <span className="text-muted-foreground font-normal">(optional)</span></label>
+            <p className="text-xs text-muted-foreground">Leave empty for direct OpenAI. Enter your proxy URL, Ollama URL, or any OpenAI-compatible endpoint.</p>
+            <div className="flex gap-2">
+              <Input
+                type="url"
+                placeholder="https://api.openai.com/v1"
+                value={baseUrl}
+                onChange={(e) => {
+                  setBaseUrl(e.target.value);
+                  if (!e.target.value) setRemoteModels([]);
+                }}
+                className="rounded-xl font-mono text-sm"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fetchRemoteModels(baseUrl)}
+                disabled={fetchingModels || !baseUrl}
+                className={cn(
+                  "rounded-xl shrink-0",
+                  remoteModels.length > 0 && "bg-green-500/10 text-green-600 border-green-500/30"
+                )}
+              >
+                {fetchingModels ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                {remoteModels.length > 0 ? `${remoteModels.length} models` : "Fetch Models"}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Provider-specific configuration */}
-      {isOllama ? (
-        <OllamaWizard
-          baseUrl={ollamaBaseUrl}
-          setBaseUrl={setOllamaBaseUrl}
-          status={ollamaStatus}
-          models={ollamaModels}
-          onTest={() => testOllamaConnection(ollamaBaseUrl)}
-          testing={ollamaTesting}
-        />
-      ) : (
-        <Card className="rounded-2xl border border-border bg-card">
-          <CardContent className="p-6">
-            <SectionTitle icon={Key} title="API Key" description={`Configure your ${provider === "openai" ? "OpenAI" : "Anthropic"} credentials`} />
-            <SecretKeyInput
-              label={providerMeta[provider].label}
-              description={providerMeta[provider].desc}
-              placeholder={providerMeta[provider].placeholder}
-              settingKey={providerMeta[provider].key}
-              keyInfo={provider === "openai" ? openaiKeyInfo : anthropicKeyInfo}
-              onSaved={handleKeySaved}
-              helpUrl={providerMeta[provider].helpUrl}
-              helpLabel={providerMeta[provider].helpLabel}
-            />
-            <Separator className="my-4" />
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Custom API URL <span className="text-muted-foreground font-normal">(optional)</span></label>
-              <p className="text-xs text-muted-foreground">Use a custom endpoint for {provider === "openai" ? "OpenAI-compatible" : "Anthropic-compatible"} APIs (e.g. Azure OpenAI, proxy, local gateway)</p>
-              <Input
-                type="url"
-                placeholder={provider === "openai" ? "https://api.openai.com/v1" : "https://api.anthropic.com"}
-                value={provider === "openai" ? openaiBaseUrl : anthropicBaseUrl}
-                onChange={(e) => provider === "openai" ? setOpenaiBaseUrl(e.target.value) : setAnthropicBaseUrl(e.target.value)}
-                className="rounded-xl font-mono text-sm"
-              />
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Model Selection */}
-      <Card className={cn("rounded-2xl border border-border bg-card", !isKeyConfigured && "opacity-60")}>
+      {/* Model Configuration */}
+      <Card className="rounded-2xl border border-border bg-card">
         <CardContent className="p-6">
           <SectionTitle icon={Sparkles} title="Model Configuration" description="Select which models to use for different tasks" />
-
-          {!isKeyConfigured && (
-            <div className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 flex items-start gap-3">
-              <AlertTriangle size={16} className="text-amber-500 mt-0.5 shrink-0" />
-              <p className="text-sm text-amber-700">
-                {isOllama
-                  ? "Connect to your Ollama server to enable model selection."
-                  : `Add your ${provider === "openai" ? "OpenAI" : "Anthropic"} API key to enable model selection.`}
-              </p>
-            </div>
-          )}
-
-          <div className={cn("grid grid-cols-1 lg:grid-cols-2 gap-6", !isKeyConfigured && "pointer-events-none")}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ModelSelector
               label="Article Summarization"
               description="For individual article summaries. Faster models are more cost-effective."
-              provider={provider} value={model} onChange={setModel}
-              icon={<Sparkles size={14} />} ollamaModels={ollamaModels}
+              value={model} onChange={setModel}
+              icon={<Sparkles size={14} />}
+              remoteModels={remoteModels}
             />
             <ModelSelector
               label="Daily Digest"
               description="For daily briefing generation. More capable models produce deeper analysis."
-              provider={provider} value={digestModel} onChange={setDigestModel}
-              icon={<Bot size={14} />} ollamaModels={ollamaModels}
+              value={digestModel} onChange={setDigestModel}
+              icon={<Bot size={14} />}
+              remoteModels={remoteModels}
             />
+          </div>
+
+          <Separator className="my-4" />
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleTestAI}
+                disabled={aiTesting || !model}
+                className="rounded-xl"
+              >
+                {aiTesting ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                Test Connection
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Send a test prompt to verify your AI configuration
+              </p>
+            </div>
+
+            {aiTestResult && (
+              <div className={cn(
+                "rounded-xl border p-4",
+                aiTestResult.success
+                  ? "border-green-500/20 bg-green-500/5"
+                  : "border-red-500/20 bg-red-500/5"
+              )}>
+                {aiTestResult.success ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-green-500" />
+                      <span className="text-sm font-medium text-green-700">Connection successful</span>
+                      <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-transparent text-[10px]">
+                        {aiTestResult.responseTime}ms
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-green-600 font-mono">
+                      Model: {aiTestResult.model}
+                    </p>
+                    <p className="text-xs text-green-600/80 italic">
+                      &quot;{aiTestResult.responsePreview}&quot;
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={16} className="text-red-500" />
+                    <span className="text-sm font-medium text-red-700">{aiTestResult.error}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -149,3 +149,210 @@
     background: oklch(0.4 0.01 250);
   }
 }
+
+select,
+select option,
+select optgroup {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+.dark select,
+.dark select option,
+.dark select optgroup {
+  color-scheme: dark;
+}
+
+/* ── Article Content Typography ────────────────────────────────────── */
+
+.article-content h1,
+.article-content h2,
+.article-content h3,
+.article-content h4,
+.article-content h5,
+.article-content h6 {
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  color: var(--foreground);
+}
+.article-content h1 { font-size: 1.5em; }
+.article-content h2 { font-size: 1.3em; }
+.article-content h3 { font-size: 1.15em; }
+.article-content h4 { font-size: 1.05em; }
+
+.article-content p {
+  margin-bottom: 1em;
+}
+
+.article-content a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.article-content a:hover {
+  opacity: 0.8;
+}
+
+.article-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1em 0;
+}
+
+.article-content figure {
+  margin: 1.5em 0;
+}
+.article-content figcaption {
+  font-size: 0.85em;
+  color: var(--muted-foreground);
+  margin-top: 0.5em;
+  text-align: center;
+}
+
+.article-content ul,
+.article-content ol {
+  margin: 1em 0;
+  padding-left: 1.5em;
+}
+.article-content ul { list-style-type: disc; }
+.article-content ol { list-style-type: decimal; }
+.article-content li { margin-bottom: 0.3em; }
+.article-content li > ul,
+.article-content li > ol { margin-top: 0.3em; margin-bottom: 0; }
+
+.article-content blockquote {
+  border-left: 3px solid var(--primary);
+  padding: 0.5em 1em;
+  margin: 1em 0;
+  background: var(--muted);
+  border-radius: 0 0.375rem 0.375rem 0;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.article-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+
+/* Code blocks — fixes the split line-numbers bug */
+.article-content pre {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 1em;
+  overflow-x: auto;
+  margin: 1em 0;
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+.article-content pre code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  font-size: inherit;
+  color: inherit;
+}
+.article-content code {
+  background: var(--muted);
+  padding: 0.15em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Hexo/Hugo highlight blocks — code with line numbers in a table */
+.article-content figure.highlight,
+.article-content .highlight {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  margin: 1em 0;
+  overflow-x: auto;
+}
+.article-content figure.highlight table,
+.article-content .highlight table {
+  display: table;
+  border: none;
+  margin: 0;
+  width: 100%;
+  border-collapse: collapse;
+}
+.article-content figure.highlight td,
+.article-content .highlight td {
+  border: none;
+  padding: 0;
+  vertical-align: top;
+  background: transparent;
+}
+.article-content figure.highlight td.gutter,
+.article-content .highlight td.gutter,
+.article-content figure.highlight td:first-child:not(.code),
+.article-content .highlight td:first-child:not(.code) {
+  user-select: none;
+  text-align: right;
+  padding: 0.8em 0.8em 0.8em 1em;
+  color: var(--muted-foreground);
+  opacity: 0.4;
+  width: 1%;
+  white-space: nowrap;
+  vertical-align: top;
+}
+.article-content figure.highlight td.code,
+.article-content .highlight td.code,
+.article-content figure.highlight td:last-child,
+.article-content .highlight td:last-child {
+  padding: 0.8em 1em 0.8em 0;
+  width: 100%;
+}
+.article-content figure.highlight pre,
+.article-content .highlight pre {
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+}
+.article-content figure.highlight tr:nth-child(even),
+.article-content .highlight tr:nth-child(even) {
+  background: transparent;
+}
+
+/* General tables */
+.article-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.9em;
+}
+.article-content th,
+.article-content td {
+  border: 1px solid var(--border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.article-content th {
+  background: var(--muted);
+  font-weight: 600;
+}
+.article-content tr:nth-child(even) {
+  background: var(--muted);
+}
+
+.article-content iframe,
+.article-content video,
+.article-content embed,
+.article-content object {
+  max-width: 100%;
+  margin: 1em 0;
+}
+
+.article-content sup { font-size: 0.75em; vertical-align: super; }
+.article-content sub { font-size: 0.75em; vertical-align: sub; }
+.article-content strong, .article-content b { font-weight: 700; }
+.article-content em, .article-content i { font-style: italic; }
+.article-content mark { background: oklch(0.85 0.15 90); padding: 0.1em 0.2em; border-radius: 0.15em; }
+.dark .article-content mark { background: oklch(0.35 0.1 90); }
