@@ -68,6 +68,17 @@ function str(value: unknown): string | undefined {
   return undefined;
 }
 
+// Parse a feed date, rejecting garbage. Some feeds emit invalid or absurd
+// dates (e.g. year 3018) that otherwise poison the "Today" filter and sort
+// order. Anything unparseable or more than a day in the future is dropped.
+function parseDate(iso: string | undefined): Date | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  if (d.getTime() > Date.now() + 24 * 60 * 60 * 1000) return null;
+  return d;
+}
+
 export async function parseFeed(url: string): Promise<ParsedFeed> {
   const validation = validateFeedUrl(url);
   if (!validation.valid) {
@@ -99,7 +110,7 @@ export async function parseFeed(url: string): Promise<ParsedFeed> {
         summary: str(item.contentSnippet)?.slice(0, 500) || null,
         author: str(item.creator) || str(raw.author) || null,
         imageUrl: extractImage(raw),
-        publishedAt: item.isoDate ? new Date(item.isoDate) : null,
+        publishedAt: parseDate(item.isoDate),
         guid: str(raw.guid) || str(raw.id) || str(item.link) || null,
         enclosureUrl: encUrl,
         enclosureType: encType,

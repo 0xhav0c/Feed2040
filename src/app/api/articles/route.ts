@@ -39,7 +39,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     } else if (filter === "today") {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
-      where.publishedAt = { gte: todayStart };
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
+      where.publishedAt = { gte: todayStart, lt: todayEnd };
     }
 
     if (search) {
@@ -54,6 +56,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
 
     // Build a single raw SQL query for todayCount and unreadCount using
     // conditional aggregation, reducing the original 4 parallel queries to 3.
@@ -71,12 +75,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
     statsParams.push(todayStart);
     const todayParamIndex = statsParams.length;
+    statsParams.push(todayEnd);
+    const todayEndParamIndex = statsParams.length;
     statsParams.push(session.user.id);
     const unreadUserParamIndex = statsParams.length;
 
     const statsQuery = `
       SELECT
-        COUNT(*) FILTER (WHERE a."publishedAt" >= $${todayParamIndex}) AS "todayCount",
+        COUNT(*) FILTER (WHERE a."publishedAt" >= $${todayParamIndex} AND a."publishedAt" < $${todayEndParamIndex}) AS "todayCount",
         COUNT(*) FILTER (WHERE NOT EXISTS (
           SELECT 1 FROM "ReadArticle" ra WHERE ra."articleId" = a."id" AND ra."userId" = $${unreadUserParamIndex}
         )) AS "unreadCount"

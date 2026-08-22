@@ -44,7 +44,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (filter === "today") {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
-      where.publishedAt = { gte: todayStart };
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
+      where.publishedAt = { gte: todayStart, lt: todayEnd };
     }
 
     const unreadArticles = await prisma.article.findMany({
