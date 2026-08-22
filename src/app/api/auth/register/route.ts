@@ -15,6 +15,18 @@ const registerSchema = z.object({
 });
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  // Force the initial-setup flow: the very first account must be created via
+  // /setup (which makes it an admin). Otherwise a stranger could grab the first
+  // non-admin account before the owner runs setup, permanently locking out
+  // admin creation.
+  const userCount = await prisma.user.count();
+  if (userCount === 0) {
+    return NextResponse.json(
+      { error: "Initial admin setup has not been completed yet." },
+      { status: 403 }
+    );
+  }
+
   const regSetting = await prisma.appSettings.findUnique({
     where: { key: "registrationEnabled" },
   });

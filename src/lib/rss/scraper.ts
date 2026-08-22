@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { validateFeedUrl } from "@/lib/utils/url-validator";
+import { safeFetchText } from "@/lib/utils/safe-fetch";
 
 const CONTENT_SELECTORS = [
   "article",
@@ -113,34 +114,20 @@ export async function scrapeFullText(url: string): Promise<string | null> {
   if (!validation.valid) return null;
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-
-    const res = await fetch(url, {
-      signal: controller.signal,
+    const { text: html, contentType } = await safeFetchText(url, {
+      timeoutMs: FETCH_TIMEOUT,
+      maxBytes: MAX_BODY_SIZE,
       headers: {
         "User-Agent":
           "Mozilla/5.0 (compatible; Feed2040/1.0; +https://github.com/feed2040)",
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
-      redirect: "follow",
     });
 
-    clearTimeout(timeoutId);
-
-    if (!res.ok) return null;
-
-    const contentType = res.headers.get("content-type") || "";
     if (!contentType.includes("text/html") && !contentType.includes("xhtml")) {
       return null;
     }
-
-    const contentLength = parseInt(res.headers.get("content-length") || "0", 10);
-    if (contentLength > MAX_BODY_SIZE) return null;
-
-    const html = await res.text();
-    if (html.length > MAX_BODY_SIZE) return null;
 
     const $ = cheerio.load(html);
 

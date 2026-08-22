@@ -12,7 +12,7 @@ const BLOCKED_HOSTNAMES = new Set([
   "169.254.169.254",
 ]);
 
-function isPrivateIP(hostname: string): boolean {
+export function isPrivateIP(hostname: string): boolean {
   const stripped = hostname.replace(/^\[|\]$/g, "").toLowerCase();
 
   // Block octal (0177.0.0.1), hex (0x7f.0.0.1), and decimal (2130706433) IP formats

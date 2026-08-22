@@ -20,6 +20,20 @@ function esc(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+// Build a Telegram HTML anchor only for http(s) URLs, escaping the href for
+// attribute context. item.url comes from LLM output and is untrusted: an
+// unescaped quote breaks entity parsing (Telegram 400s the whole message) and
+// a non-http scheme must never be emitted.
+function safeAnchor(rawUrl: string, label: string): string | null {
+  if (!/^https?:\/\//i.test(rawUrl)) return null;
+  const href = rawUrl
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<a href="${href}">${label}</a>`;
+}
+
 const IMPACT_EMOJI: Record<string, string> = {
   critical: "🔴",
   high: "🟠",
@@ -54,7 +68,8 @@ function formatSingleBriefItem(
     if (tagsStr) parts.push(tagsStr);
   }
   if (item.url) {
-    parts.push(`<a href="${item.url}">Source</a>`);
+    const anchor = safeAnchor(item.url, "Source");
+    if (anchor) parts.push(anchor);
   }
   lines.push(parts.join(" | "));
   lines.push(`\n<i>[${index}/${total}]</i>`);

@@ -64,6 +64,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "This feed is already added" }, { status: 409 });
     }
 
+    // Verify every requested category belongs to the caller (prevents IDOR:
+    // linking to another user's category and leaking its details on read).
+    if (categoryIds?.length) {
+      const ownedCount = await prisma.category.count({
+        where: { id: { in: categoryIds }, userId: session.user.id },
+      });
+      if (ownedCount !== categoryIds.length) {
+        return NextResponse.json({ error: "Invalid category" }, { status: 400 });
+      }
+    }
+
     const validation = validateFeedUrl(url);
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error ?? "Invalid URL" }, { status: 400 });

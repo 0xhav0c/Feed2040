@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit } from "@/lib/rate-limit";
 import crypto from "crypto";
 
 function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status });
+}
+
+function clientIp(req: NextRequest): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  return req.headers.get("x-real-ip") || "unknown";
 }
 
 async function authenticateApiKey(apiKey: string) {
@@ -17,6 +24,14 @@ async function authenticateApiKey(apiKey: string) {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const url = new URL(req.url);
+
+  // Rate-limit per IP to prevent unauthenticated brute-force/DoS against the
+  // unsalted-key lookup (the endpoint is public and CSRF-exempt).
+  const rl = await checkRateLimit(`fever:${clientIp(req)}`, 60, 60);
+  if (!rl.allowed) {
+    return json({ api_version: 3, auth: 0 }, 429);
+  }
+
   const formData = await req.formData();
   const apiKey = (formData.get("api_key") as string) || "";
 

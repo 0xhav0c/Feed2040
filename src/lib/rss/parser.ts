@@ -1,5 +1,6 @@
 import Parser from "rss-parser";
 import { validateFeedUrl } from "@/lib/utils/url-validator";
+import { safeFetchText } from "@/lib/utils/safe-fetch";
 import { cleanTrackingParams } from "@/lib/utils/url-cleaner";
 
 const parser = new Parser({
@@ -84,7 +85,16 @@ export async function parseFeed(url: string): Promise<ParsedFeed> {
   if (!validation.valid) {
     throw new Error(validation.error ?? "Invalid feed URL");
   }
-  const feed = await parser.parseURL(url);
+  // Fetch through the SSRF-hardened helper (redirect + DNS-rebinding safe),
+  // then parse the retrieved text rather than letting rss-parser fetch it.
+  const { text } = await safeFetchText(url, {
+    timeoutMs: 20000,
+    // Feeds with many items can be several MB; keep a generous cap (rss-parser
+    // previously had none) while still bounding memory.
+    maxBytes: 15_000_000,
+    headers: { "User-Agent": "Feed2040/1.0 RSS Reader" },
+  });
+  const feed = await parser.parseString(text);
 
   return {
     title: str(feed.title) || url,
@@ -130,20 +140,11 @@ export async function previewFeed(url: string): Promise<ParsedFeed & { itemCount
 }
 
 export async function discoverFeedUrls(url: string): Promise<string[]> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Feed2040/1.0 RSS Reader",
-      },
+    const { text: html } = await safeFetchText(url, {
+      timeoutMs: 10000,
+      headers: { "User-Agent": "Feed2040/1.0 RSS Reader" },
     });
-
-    if (!response.ok) return [];
-
-    const html = await response.text();
 
     // Match <link> tags with rel="alternate" and RSS/Atom types
     const linkPattern =
@@ -189,7 +190,5 @@ export async function discoverFeedUrls(url: string): Promise<string[]> {
     return feedUrls;
   } catch {
     return [];
-  } finally {
-    clearTimeout(timeout);
   }
 }
