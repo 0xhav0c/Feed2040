@@ -12,7 +12,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   try {
     const feeds = await prisma.feed.findMany({
-      where: { errorCount: { lt: 5 } },
       select: {
         id: true,
         url: true,
@@ -25,6 +24,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         scrapeFullText: true,
         refreshInterval: true,
         lastFetched: true,
+        errorCount: true,
+        updatedAt: true,
         userId: true,
       },
       orderBy: [
@@ -37,10 +38,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let updated = 0;
     let failed = 0;
     const refreshStartedAt = new Date();
+    const now = Date.now();
     const feedsToRefresh = feeds.filter((feed) => {
+      // Regular per-feed cadence
       if (feed.refreshInterval && feed.lastFetched) {
-        const nextRefresh = new Date(feed.lastFetched.getTime() + feed.refreshInterval * 60_000);
-        if (new Date() < nextRefresh) return false;
+        const nextRefresh = feed.lastFetched.getTime() + feed.refreshInterval * 60_000;
+        if (now < nextRefresh) return false;
+      }
+      // Exponential backoff for repeatedly failing feeds (never permanently excluded).
+      // A transient outage no longer kills feeds forever: they keep retrying, just
+      // less often (capped at once every 12h), and errorCount resets to 0 on success.
+      // Uses updatedAt (bumped on every attempt, success or fail) as the last-attempt
+      // marker, since lastFetched only advances on success.
+      if (feed.errorCount > 0) {
+        const backoffMs = Math.min(30 * 2 ** (feed.errorCount - 1), 720) * 60_000;
+        if (now < feed.updatedAt.getTime() + backoffMs) return false;
       }
       return true;
     });
