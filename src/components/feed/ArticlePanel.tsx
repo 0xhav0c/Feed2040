@@ -178,33 +178,49 @@ export const ArticlePanel = memo(function ArticlePanel({
       return;
     }
 
+    // Guard against out-of-order responses: rapidly switching articles (j/k)
+    // could otherwise let a slow response for a previous article overwrite the
+    // current one's body.
+    let cancelled = false;
+    const currentId = article.id;
+    const ownContent = article.content;
+
     setTranslatedContent(null);
     scrollRef.current?.scrollTo(0, 0);
 
     fetch("/api/articles/read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ articleId: article.id }),
+      body: JSON.stringify({ articleId: currentId }),
     }).catch(() => {});
 
-    if (article.content) setFullContent(article.content);
+    if (ownContent) setFullContent(ownContent);
     else setLoadingContent(true);
 
-    fetch(`/api/articles/${article.id}`)
+    fetch(`/api/articles/${currentId}`)
       .then((res) => res.json())
       .then((data) => {
+        if (cancelled) return;
         const fetched = data.data?.content;
-        if (fetched && fetched.length > (article.content?.length || 0)) {
+        if (fetched && fetched.length > (ownContent?.length || 0)) {
           setFullContent(fetched);
-        } else if (!article.content) {
+        } else if (!ownContent) {
           setFullContent(fetched || null);
         }
       })
       .catch(() => {
-        if (!article.content) setFullContent(null);
+        if (!cancelled && !ownContent) setFullContent(null);
       })
-      .finally(() => setLoadingContent(false));
-  }, [article]);
+      .finally(() => {
+        if (!cancelled) setLoadingContent(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // Only re-run when the opened article changes, not on every field update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [article?.id]);
 
   // Fetch related articles when article changes
   useEffect(() => {

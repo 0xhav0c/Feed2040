@@ -176,8 +176,11 @@ export default function CategoriesPage() {
   async function handleDeleteConfirm() {
     if (!deletingCat) return;
     try {
-      await fetch(`/api/categories/${deletingCat.id}`, { method: "DELETE" });
-      setCategories((prev) => prev.filter((c) => c.id !== deletingCat.id));
+      const res = await fetch(`/api/categories/${deletingCat.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      // Refetch instead of an optimistic top-level filter, which misses nested
+      // subcategories and leaves them visible until a manual reload.
+      await fetchCategories();
       toast.success("Category deleted");
     } catch {
       toast.error("Failed");

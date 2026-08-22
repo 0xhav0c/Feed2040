@@ -51,7 +51,8 @@ function extractImage(item: Record<string, unknown>): string | null {
   // Try extracting from content
   const content = (item.content || item["content:encoded"]) as string | undefined;
   if (content) {
-    const match = content.match(/<img[^>]+src="([^"]+)"/);
+    // Match src with double, single, or no quotes (feeds vary).
+    const match = content.match(/<img[^>]+src=["']?([^"'\s>]+)/i);
     if (match) return match[1];
   }
 

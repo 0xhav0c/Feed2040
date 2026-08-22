@@ -2,12 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cacheDel } from "@/lib/redis";
-import { parseFeed } from "@/lib/rss/parser";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
+import { refreshFeed, runWithConcurrency } from "@/lib/rss/refresh";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rl = await checkRateLimit(`refresh:${session.user.id}`, 10, 60);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Try again later." },
+      { status: 429, headers: rateLimitHeaders(rl, 10) }
+    );
   }
 
   try {
@@ -27,6 +36,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         userId: session.user.id,
         ...(feedIdFilter ? { id: feedIdFilter } : {}),
       },
+      select: {
+        id: true,
+        url: true,
+        title: true,
+        siteUrl: true,
+        description: true,
+        imageUrl: true,
+        language: true,
+        faviconUrl: true,
+        scrapeFullText: true,
+      },
       orderBy: [
         { lastFetched: { sort: "asc", nulls: "first" } },
         { updatedAt: "asc" },
@@ -37,58 +57,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let failed = 0;
     let newArticles = 0;
 
-    for (const feed of feeds) {
-      if (!feedIdFilter && feed.errorCount >= 5) continue;
-
+    // Delegate to the shared refreshFeed() so behaviour (URL-based dedup,
+    // full-text scraping, accurate insert counts, favicon derivation) matches
+    // the cron path exactly. A manual refresh deliberately retries every feed —
+    // no permanent errorCount exclusion — so users can recover failing feeds.
+    await runWithConcurrency(feeds, 5, async (feed) => {
       try {
-        const parsedFeed = await parseFeed(feed.url);
-
-        const existingGuids = new Set<string>();
-        if (parsedFeed.items.length > 0) {
-          const existing = await prisma.article.findMany({
-            where: { feedId: feed.id },
-            select: { guid: true },
-          });
-          for (const a of existing) {
-            if (a.guid) existingGuids.add(a.guid);
-          }
-        }
-
-        const newItems = parsedFeed.items
-          .slice(0, 50)
-          .filter((item) => !item.guid || !existingGuids.has(item.guid));
-
-        if (newItems.length > 0) {
-          await prisma.article.createMany({
-            data: newItems.map((item) => ({
-              title: item.title,
-              url: item.url,
-              content: item.content,
-              summary: item.summary,
-              author: item.author,
-              imageUrl: item.imageUrl,
-              publishedAt: item.publishedAt,
-              guid: item.guid,
-              feedId: feed.id,
-            })),
-            skipDuplicates: true,
-          });
-          newArticles += newItems.length;
-        }
-
-        await prisma.feed.update({
-          where: { id: feed.id },
-          data: {
-            title: parsedFeed.title || feed.title,
-            siteUrl: parsedFeed.siteUrl || feed.siteUrl,
-            description: parsedFeed.description || feed.description,
-            imageUrl: parsedFeed.imageUrl || feed.imageUrl,
-            language: parsedFeed.language || feed.language,
-            lastFetched: new Date(),
-            fetchError: null,
-            errorCount: 0,
-          },
-        });
+        const result = await refreshFeed(feed);
+        newArticles += result.newArticles;
         updated++;
       } catch (err) {
         failed++;
@@ -100,7 +76,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           },
         });
       }
-    }
+    });
 
     if (updated > 0) await cacheDel("sidebar:*");
     return NextResponse.json({

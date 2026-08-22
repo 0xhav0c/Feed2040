@@ -21,17 +21,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
-    // Delete articles older than cutoff, excluding bookmarked ones
+    // Delete articles older than cutoff, excluding bookmarked ones. Use a
+    // relation filter so the exclusion runs in SQL — loading every bookmarked
+    // id into a notIn array breaks down (query size / param limits) at scale.
     const result = await prisma.article.deleteMany({
       where: {
         createdAt: { lt: cutoffDate },
-        id: {
-          notIn: (
-            await prisma.bookmark.findMany({
-              select: { articleId: true },
-            })
-          ).map((b) => b.articleId),
-        },
+        bookmarks: { none: {} },
       },
     });
 

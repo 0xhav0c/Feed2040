@@ -1,9 +1,5 @@
 import OpenAI from "openai";
-import {
-  resolveSecretKey,
-  getUserBaseUrl,
-  SETTING_KEYS,
-} from "@/lib/settings";
+import { resolveSecretKey, getUserBaseUrl } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
 
 export interface ChatOptions {

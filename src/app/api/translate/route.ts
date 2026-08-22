@@ -89,8 +89,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const translatedChunks: string[] = [];
 
     for (const chunk of chunks) {
-      const result = await translate(chunk, { to: targetLang });
-      translatedChunks.push(result.text);
+      // Retry per chunk with a short backoff; if it still fails, keep the
+      // original text so one flaky chunk doesn't fail the whole request.
+      let translatedText = chunk;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const result = await translate(chunk, { to: targetLang });
+          translatedText = result.text;
+          break;
+        } catch {
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+          }
+        }
+      }
+      translatedChunks.push(translatedText);
     }
 
     return NextResponse.json({

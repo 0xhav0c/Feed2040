@@ -282,6 +282,7 @@ model TelegramSettings {
   scheduleTimes  String[]
   timezone       String  @default("Europe/Istanbul")
   summaryCategories String[]
+  lastDigestSentDate String? // YYYY-MM-DD of the last sent Telegram digest (idempotency)
 
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

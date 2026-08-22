@@ -98,6 +98,9 @@ function FeedsContent() {
 
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  // Monotonic id so only the most recent article request updates state,
+  // guarding against out-of-order responses when navigating/filtering quickly.
+  const requestIdRef = useRef(0);
 
   const bookmarkedIds = useMemo(() => {
     const ids = new Set<string>();
@@ -109,6 +112,7 @@ function FeedsContent() {
 
   const fetchArticles = useCallback(
     async (p: number, q: string, filter: "" | "today" | "unread" = "") => {
+      const reqId = ++requestIdRef.current;
       setLoading(true);
       try {
         const params = new URLSearchParams({
@@ -122,6 +126,9 @@ function FeedsContent() {
 
         const res = await fetch(`/api/articles?${params}`);
         const data = await res.json();
+        // Ignore all but the most recent request so a slow earlier response
+        // can't clobber newer results.
+        if (requestIdRef.current !== reqId) return;
         if (res.ok) {
           setArticles(data.data);
           setTotalPages(data.pagination.totalPages);
@@ -132,9 +139,10 @@ function FeedsContent() {
           }
         }
       } catch (err) {
+        if (requestIdRef.current !== reqId) return;
         console.error("Failed to fetch articles:", err);
       } finally {
-        setLoading(false);
+        if (requestIdRef.current === reqId) setLoading(false);
       }
     },
     [feedId, categoryId]
@@ -144,16 +152,29 @@ function FeedsContent() {
     document.title = "Feeds | Feed2040";
   }, []);
 
+  // Reset view state when the selected feed/category changes (no fetch here —
+  // the fetch effect below reacts to the resulting state/dependency change).
   useEffect(() => {
     setPage(1);
     setSearchQuery("");
     setSearchInput("");
     setActiveFilter("");
-    fetchArticles(1, "", "");
-  }, [feedId, categoryId, fetchArticles]);
+  }, [feedId, categoryId]);
+
+  // Single source of fetching. The out-of-order guard in fetchArticles ensures
+  // that when navigation triggers both a feedId change and a page reset, the
+  // most recent request wins regardless of resolution order.
+  useEffect(() => {
+    fetchArticles(page, searchQuery, activeFilter);
+  }, [feedId, categoryId, page, searchQuery, activeFilter, fetchArticles]);
 
   useEffect(() => {
-    if (!feedId && !categoryId) return;
+    if (!feedId && !categoryId) {
+      setFilterTitle("");
+      return;
+    }
+    // Clear the previous title so a stale one doesn't flash during the switch.
+    setFilterTitle("");
     if (feedId) {
       fetch("/api/feeds")
         .then((r) => r.json())
@@ -176,15 +197,6 @@ function FeedsContent() {
         .catch(() => {});
     }
   }, [feedId, categoryId]);
-
-  const initialLoadDone = useRef(false);
-  useEffect(() => {
-    if (!initialLoadDone.current) {
-      initialLoadDone.current = true;
-      return;
-    }
-    fetchArticles(page, searchQuery, activeFilter);
-  }, [fetchArticles, page, searchQuery, activeFilter]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchInput(value);

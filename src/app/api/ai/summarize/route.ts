@@ -52,7 +52,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const aiSettings = await prisma.aISettings.findUnique({
       where: { userId: session.user.id },
     });
-    const language = aiSettings?.language || "tr";
+    // Default to English to match the digest/web-briefing default; a user's
+    // configured language still overrides.
+    const language = aiSettings?.language || "en";
 
     const summary = await summarizeArticle(content, language, session.user.id);
 
