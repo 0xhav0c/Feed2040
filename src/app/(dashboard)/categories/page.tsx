@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Header } from "@/components/layout/Header";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/input";
@@ -348,6 +348,8 @@ export default function CategoriesPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => setColor(c)}
+                      aria-label={`Color ${c}`}
+                      aria-pressed={color === c}
                       className={cn(
                         "h-8 w-8 rounded-full p-0 min-w-0 transition-all",
                         color === c ? "ring-2 ring-offset-2 ring-primary scale-110" : "hover:scale-105"
@@ -598,6 +600,7 @@ function CategoryRow({
                     onPatch(category.id, { color: c });
                     setEditingColor(false);
                   }}
+                  aria-label={`Set color ${c}`}
                   className="h-6 w-6 rounded-full p-0 min-w-0 border-2 border-transparent hover:border-foreground transition-colors"
                   style={{ backgroundColor: c }}
                 />

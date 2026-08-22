@@ -110,6 +110,13 @@ function FeedsContent() {
     return ids;
   }, [articles]);
 
+  // Mirror of `articles` for stable callbacks that need the current list
+  // without depending on it (which would re-register global listeners).
+  const articlesRef = useRef(articles);
+  useEffect(() => {
+    articlesRef.current = articles;
+  }, [articles]);
+
   const fetchArticles = useCallback(
     async (p: number, q: string, filter: "" | "today" | "unread" = "") => {
       const reqId = ++requestIdRef.current;
@@ -343,7 +350,7 @@ function FeedsContent() {
 
   const handleToggleRead = useCallback(
     async (articleId: string) => {
-      const article = articles.find((a) => a.id === articleId);
+      const article = articlesRef.current.find((a) => a.id === articleId);
       if (!article) return;
       const wasRead = article.isRead;
       setArticles((prev) =>
@@ -369,7 +376,7 @@ function FeedsContent() {
         );
       }
     },
-    [articles]
+    []
   );
 
   const selectedIndex = useMemo(() => {

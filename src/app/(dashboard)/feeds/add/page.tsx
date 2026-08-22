@@ -150,7 +150,6 @@ export default function AddFeedPage() {
   const [opmlStats, setOpmlStats] = useState({ success: 0, skipped: 0, failed: 0 });
   const [opmlLog, setOpmlLog] = useState<ImportLogEntry[]>([]);
   const [opmlDone, setOpmlDone] = useState(false);
-  const abortRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -315,7 +314,6 @@ export default function AddFeedPage() {
     setOpmlDone(false);
     setOpmlLog([]);
     setOpmlStats({ success: 0, skipped: 0, failed: 0 });
-    abortRef.current = false;
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -421,7 +419,6 @@ export default function AddFeedPage() {
 
   function handleStopImport() {
     abortControllerRef.current?.abort();
-    abortRef.current = true;
   }
 
   const opmlProcessed = opmlStats.success + opmlStats.skipped + opmlStats.failed;
@@ -524,7 +521,6 @@ export default function AddFeedPage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  abortRef.current = true;
                   setOpmlMode(false);
                   setOpmlFeeds([]);
                   setOpmlLog([]);

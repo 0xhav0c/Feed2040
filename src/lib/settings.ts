@@ -31,19 +31,6 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
   });
 }
 
-export async function deleteAppSetting(key: string): Promise<void> {
-  try {
-    await prisma.appSettings.delete({ where: { key } });
-  } catch {
-    // ignore if not found
-  }
-}
-
-export async function hasAppSetting(key: string): Promise<boolean> {
-  const setting = await prisma.appSettings.findUnique({ where: { key } });
-  return !!setting?.value;
-}
-
 function encrypt(text: string): string {
   const key = getEncryptionKey();
   const iv = crypto.randomBytes(16);
@@ -135,26 +122,6 @@ export async function deleteUserApiKey(
   } catch {
     // ignore if not found
   }
-}
-
-export async function getUserOllamaUrl(userId: string): Promise<string | null> {
-  try {
-    const record = await prisma.userApiKeys.findUnique({
-      where: { userId },
-      select: { ollamaBaseUrl: true },
-    });
-    return record?.ollamaBaseUrl || null;
-  } catch {
-    return null;
-  }
-}
-
-export async function setUserOllamaUrl(userId: string, url: string): Promise<void> {
-  await prisma.userApiKeys.upsert({
-    where: { userId },
-    create: { userId, ollamaBaseUrl: url },
-    update: { ollamaBaseUrl: url },
-  });
 }
 
 export type BaseUrlName = "openaiBaseUrl" | "anthropicBaseUrl";

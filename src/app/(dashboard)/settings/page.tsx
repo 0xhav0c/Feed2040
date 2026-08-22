@@ -25,7 +25,6 @@ import {
   Shield,
   AlertTriangle,
   Zap,
-  Server,
   ArrowRight,
   Wifi,
   Copy,

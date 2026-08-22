@@ -152,7 +152,6 @@ export default function BriefingPage() {
 
   useEffect(() => {
     loadCachedDigest();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadCachedDigest() {

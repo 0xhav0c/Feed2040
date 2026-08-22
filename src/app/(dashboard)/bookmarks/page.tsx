@@ -125,7 +125,6 @@ export default function BookmarksPage() {
         if (selectedArticle) setSelectedArticle(null);
       },
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [paginatedArticles, selectedIndex, selectedArticle, handleBookmarkToggle]
   );
 
@@ -191,6 +190,7 @@ export default function BookmarksPage() {
               viewMode={viewMode}
               articles={paginatedArticles}
               onSelectArticle={handleSelectArticle}
+              selectedArticleId={selectedArticle?.id}
             />
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-4 border-t border-border px-4 py-3">

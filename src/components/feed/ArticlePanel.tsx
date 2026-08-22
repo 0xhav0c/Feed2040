@@ -32,7 +32,6 @@ import type { ArticleWithFeed } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { isSafeUrl } from "@/lib/utils/url-validator";
 import { toast } from "sonner";
 
@@ -735,6 +734,15 @@ export const ArticlePanel = memo(function ArticlePanel({
               <ExternalLink size={12} />
               <span className="hidden lg:inline">Original</span>
             </a>
+
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors ml-1"
+              title="Close"
+              aria-label="Close article"
+            >
+              <X size={15} />
+            </button>
           </div>
         </div>
 

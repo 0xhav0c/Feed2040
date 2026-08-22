@@ -5,7 +5,6 @@ import {
   LayoutList,
   LayoutGrid,
   Newspaper,
-  RefreshCw,
 } from "lucide-react";
 import type { ViewMode } from "@/types";
 import { VIEW_MODES } from "@/types";
@@ -15,7 +14,6 @@ type HeaderProps = {
   subtitle?: string;
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
-  onRefresh?: () => void;
   actions?: React.ReactNode;
 };
 
@@ -30,7 +28,6 @@ export function Header({
   subtitle,
   viewMode = "list",
   onViewModeChange,
-  onRefresh,
   actions,
 }: HeaderProps) {
   return (
@@ -60,22 +57,13 @@ export function Header({
                       : "text-muted-foreground hover:text-foreground"
                   )}
                   title={option.label}
+                  aria-label={`${option.label} view`}
                 >
                   <Icon size={18} />
                 </button>
               );
             })}
           </div>
-        )}
-
-        {onRefresh && (
-          <button
-            onClick={onRefresh}
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            title="Refresh Feeds"
-          >
-            <RefreshCw size={18} />
-          </button>
         )}
 
         {actions}

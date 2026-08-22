@@ -84,31 +84,6 @@ export function isSafeUrl(url: string | null | undefined): boolean {
   }
 }
 
-export function validateOllamaUrl(url: string): { valid: boolean; error?: string } {
-  if (!url || typeof url !== "string") {
-    return { valid: false, error: "URL is required" };
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(url.trim());
-  } catch {
-    return { valid: false, error: "Invalid URL format" };
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return { valid: false, error: "Only http/https URLs are allowed" };
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-
-  if (hostname === "169.254.169.254" || hostname === "metadata.google.internal") {
-    return { valid: false, error: "This hostname is not allowed" };
-  }
-
-  return { valid: true };
-}
-
 export function validateFeedUrl(url: string): { valid: boolean; error?: string } {
   if (!url || typeof url !== "string") {
     return { valid: false, error: "URL is required" };

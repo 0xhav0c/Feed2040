@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useEffect, useCallback } from "react";
+import { memo, useState, useEffect, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import {
   Bookmark,
@@ -20,17 +20,13 @@ type Props = {
 };
 
 function useTimeAgo(date: Date | null): string | null {
-  const [timeAgo, setTimeAgo] = useState<string | null>(null);
-  useEffect(() => {
-    if (!date) return;
-    const d = new Date(date);
-    setTimeAgo(formatDistanceToNow(d, { addSuffix: true }));
-    const interval = setInterval(() => {
-      setTimeAgo(formatDistanceToNow(d, { addSuffix: true }));
-    }, 60_000);
-    return () => clearInterval(interval);
-  }, [date]);
-  return timeAgo;
+  // Compute once per date change. Avoids one setInterval timer per rendered
+  // card (a bookmarks/feed list can mount dozens); relative time refreshes on
+  // the next render/navigation, which is sufficient here.
+  return useMemo(
+    () => (date ? formatDistanceToNow(new Date(date), { addSuffix: true }) : null),
+    [date]
+  );
 }
 
 export const FeedArticleCard = memo(function FeedArticleCard({

@@ -33,6 +33,9 @@ export function FeedContextMenu({ feedId, feedTitle, onEdit, onDelete }: FeedCon
           setOpen(!open);
         }}
         className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 hover:text-foreground hover:bg-sidebar-accent transition-colors opacity-0 group-hover:opacity-100"
+        aria-label="Feed options"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <MoreHorizontal size={12} />
       </button>
