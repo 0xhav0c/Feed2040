@@ -51,9 +51,18 @@ export async function refreshFeed(feed: {
     for (const a of existing) existingUrls.add(a.url);
   }
 
+  const seenUrls = new Set<string>();
   const newItems = parsed.items.slice(0, 50).filter((item) => {
     if (item.guid && existingGuids.has(item.guid)) return false;
-    if (!item.guid && existingUrls.has(item.url)) return false;
+    // Also dedup by URL even when a guid is present: some feeds emit an
+    // unstable guid (e.g. a random ?p=NNNN) for the same article on every
+    // fetch, which would otherwise re-insert every article each refresh.
+    if (item.url && existingUrls.has(item.url)) return false;
+    // Guard against the same URL appearing twice within one fetch.
+    if (item.url) {
+      if (seenUrls.has(item.url)) return false;
+      seenUrls.add(item.url);
+    }
     return true;
   });
 
