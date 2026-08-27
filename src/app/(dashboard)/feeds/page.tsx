@@ -242,7 +242,10 @@ function FeedsContent() {
       if (res.ok) {
         toast.success(`Marked ${data.data.marked} articles as read`);
         setArticles((prev) => prev.map((a) => ({ ...a, isRead: true })));
+        setUnreadCount(0);
         fetchArticles(page, searchQuery, activeFilter);
+        // Tell the sidebar to refresh its per-category unread counts now.
+        window.dispatchEvent(new Event("feed:read-changed"));
       } else {
         toast.error("Failed to mark articles as read");
       }
@@ -370,6 +373,7 @@ function FeedsContent() {
             body: JSON.stringify({ articleId }),
           });
         }
+        window.dispatchEvent(new Event("feed:read-changed"));
       } catch {
         setArticles((prev) =>
           prev.map((a) => (a.id === articleId ? { ...a, isRead: wasRead } : a))

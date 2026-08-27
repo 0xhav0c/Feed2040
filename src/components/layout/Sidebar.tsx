@@ -187,7 +187,14 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
     const interval = setInterval(() => {
       if (!document.hidden) fetchSidebar();
     }, 60_000);
-    return () => clearInterval(interval);
+    // Refresh immediately when read state changes elsewhere (e.g. "mark all
+    // read" on the feed list) instead of waiting for the next interval tick.
+    const onReadChanged = () => fetchSidebar();
+    window.addEventListener("feed:read-changed", onReadChanged);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("feed:read-changed", onReadChanged);
+    };
   }, [fetchSidebar]);
 
   function toggleCat(id: string) {
