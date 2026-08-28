@@ -334,7 +334,9 @@ export const ArticlePanel = memo(function ArticlePanel({
         img.removeEventListener("click", handler);
       });
     };
-  }, [fullContent, article?.id]);
+    // Re-bind when the rendered body changes — including a translation swap,
+    // which replaces the <img> nodes (translatedContent), not just fullContent.
+  }, [fullContent, translatedContent, article?.id]);
 
   const handleBookmark = useCallback(() => {
     if (article) onBookmarkToggle(article.id);
@@ -833,7 +835,16 @@ export const ArticlePanel = memo(function ArticlePanel({
   // this effect keys on both displayContent and highlights.
   useEffect(() => {
     const root = contentRef.current;
-    if (!root || highlights.length === 0) return;
+    if (!root) return;
+    // Rebuild the mark set from current highlights: unwrap any existing marks
+    // first so a deleted highlight doesn't linger visually until reload.
+    root.querySelectorAll("mark.f2040-hl").forEach((m) => {
+      const parent = m.parentNode;
+      if (!parent) return;
+      while (m.firstChild) parent.insertBefore(m.firstChild, m);
+      parent.removeChild(m);
+      parent.normalize();
+    });
     for (const h of highlights) markFirstOccurrence(root, h.text);
   }, [displayContent, highlights]);
 

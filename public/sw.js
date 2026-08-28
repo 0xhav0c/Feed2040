@@ -103,9 +103,20 @@ self.addEventListener("notificationclick", (event) => {
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clients) => {
+        // Prefer a tab already on the target path — don't yank an unrelated one.
+        for (const client of clients) {
+          try {
+            if (new URL(client.url).pathname === new URL(url, client.url).pathname && "focus" in client) {
+              return client.focus();
+            }
+          } catch {
+            /* ignore malformed client URL */
+          }
+        }
+        // Otherwise reuse any open tab, navigating it to the target.
         for (const client of clients) {
           if ("focus" in client) {
-            client.navigate(url);
+            if ("navigate" in client) client.navigate(url).catch(() => {});
             return client.focus();
           }
         }

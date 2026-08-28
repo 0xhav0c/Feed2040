@@ -74,20 +74,34 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       faviconUrl = `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`;
     } catch { /* ignore */ }
 
-    const article = await prisma.article.create({
-      data: {
-        feedId: savedFeed.id,
-        title: scraped.title,
-        url,
-        guid: url,
-        content: scraped.content,
-        summary: scraped.excerpt,
-        author: scraped.author,
-        imageUrl: scraped.imageUrl,
-        publishedAt: new Date(),
-      },
-      select: { id: true, title: true },
-    });
+    let article: { id: string; title: string };
+    try {
+      article = await prisma.article.create({
+        data: {
+          feedId: savedFeed.id,
+          title: scraped.title,
+          url,
+          guid: url,
+          content: scraped.content,
+          summary: scraped.excerpt,
+          author: scraped.author,
+          imageUrl: scraped.imageUrl,
+          publishedAt: new Date(),
+        },
+        select: { id: true, title: true },
+      });
+    } catch (e) {
+      // Concurrent save of the same URL: the unique (guid, feedId) constraint
+      // fires — return the existing article instead of a 500.
+      if ((e as { code?: string }).code === "P2002") {
+        const dup = await prisma.article.findFirst({
+          where: { feedId: savedFeed.id, url },
+          select: { id: true },
+        });
+        if (dup) return NextResponse.json({ data: { id: dup.id, duplicate: true } });
+      }
+      throw e;
+    }
 
     // Keep the saved feed's favicon fresh (first save only sets it).
     if (faviconUrl) {

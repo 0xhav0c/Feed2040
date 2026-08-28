@@ -79,6 +79,7 @@ function FeedsContent() {
   const tagId = searchParams.get("tagId") || "";
   const saved = searchParams.get("saved") === "1";
   const urlQuery = searchParams.get("q") || "";
+  const urlFilter = searchParams.get("filter") || "";
 
   const [articles, setArticles] = useState<ArticleWithFeed[]>([]);
   const [loading, setLoading] = useState(true);
@@ -202,8 +203,10 @@ function FeedsContent() {
     setPage(1);
     setSearchQuery(urlQuery);
     setSearchInput(urlQuery);
-    setActiveFilter("");
-  }, [feedId, categoryId, tagId, saved, urlQuery]);
+    // Seed the filter from the URL too, so saved-search links that carry a
+    // Today/Unread filter apply it (they persist ?filter=).
+    setActiveFilter(urlFilter === "today" || urlFilter === "unread" ? urlFilter : "");
+  }, [feedId, categoryId, tagId, saved, urlQuery, urlFilter]);
 
   // Single source of fetching. The out-of-order guard in fetchArticles ensures
   // that when navigation triggers both a feedId change and a page reset, the
@@ -773,7 +776,7 @@ function FeedsContent() {
                   )}
                 </div>
                 <button
-                  onClick={() => setSemanticMode((v) => !v)}
+                  onClick={() => { setSemanticMode((v) => !v); setPage(1); }}
                   title={semanticMode ? "Semantic search: on" : "Semantic search: off"}
                   aria-label="Toggle semantic search"
                   aria-pressed={semanticMode}
