@@ -28,6 +28,7 @@ model User {
   apiKeys           UserApiKeys?
   digests           Digest[]
   notificationRules NotificationRule[]
+  tags              Tag[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -117,6 +118,7 @@ model Article {
 
   bookmarks    Bookmark[]
   readArticles ReadArticle[]
+  tags         ArticleTag[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -289,4 +291,34 @@ model TelegramSettings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Tag {
+  id     String  @id @default(cuid())
+  name   String
+  color  String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  articles ArticleTag[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model ArticleTag {
+  articleId String
+  tagId     String
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([articleId, tagId])
+  @@index([tagId])
+  @@index([articleId])
 }

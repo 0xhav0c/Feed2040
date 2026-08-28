@@ -71,6 +71,7 @@ function FeedsContent() {
   const searchParams = useSearchParams();
   const feedId = searchParams.get("feedId") || "";
   const categoryId = searchParams.get("categoryId") || "";
+  const tagId = searchParams.get("tagId") || "";
 
   const [articles, setArticles] = useState<ArticleWithFeed[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +130,7 @@ function FeedsContent() {
         if (q) params.set("q", q);
         if (feedId) params.set("feedId", feedId);
         if (categoryId) params.set("categoryId", categoryId);
+        if (tagId) params.set("tagId", tagId);
         if (filter) params.set("filter", filter);
 
         const res = await fetch(`/api/articles?${params}`);
@@ -152,31 +154,31 @@ function FeedsContent() {
         if (requestIdRef.current === reqId) setLoading(false);
       }
     },
-    [feedId, categoryId]
+    [feedId, categoryId, tagId]
   );
 
   useEffect(() => {
     document.title = "Feeds | Feed2040";
   }, []);
 
-  // Reset view state when the selected feed/category changes (no fetch here —
-  // the fetch effect below reacts to the resulting state/dependency change).
+  // Reset view state when the selected feed/category/tag changes (no fetch here
+  // — the fetch effect below reacts to the resulting state/dependency change).
   useEffect(() => {
     setPage(1);
     setSearchQuery("");
     setSearchInput("");
     setActiveFilter("");
-  }, [feedId, categoryId]);
+  }, [feedId, categoryId, tagId]);
 
   // Single source of fetching. The out-of-order guard in fetchArticles ensures
   // that when navigation triggers both a feedId change and a page reset, the
   // most recent request wins regardless of resolution order.
   useEffect(() => {
     fetchArticles(page, searchQuery, activeFilter);
-  }, [feedId, categoryId, page, searchQuery, activeFilter, fetchArticles]);
+  }, [feedId, categoryId, tagId, page, searchQuery, activeFilter, fetchArticles]);
 
   useEffect(() => {
-    if (!feedId && !categoryId) {
+    if (!feedId && !categoryId && !tagId) {
       setFilterTitle("");
       return;
     }
@@ -202,8 +204,18 @@ function FeedsContent() {
           if (c) setFilterTitle(c.name);
         })
         .catch(() => {});
+    } else if (tagId) {
+      fetch("/api/tags")
+        .then((r) => r.json())
+        .then((d) => {
+          const t = d.data?.find(
+            (x: { id: string; name: string }) => x.id === tagId
+          );
+          if (t) setFilterTitle(`#${t.name}`);
+        })
+        .catch(() => {});
     }
-  }, [feedId, categoryId]);
+  }, [feedId, categoryId, tagId]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchInput(value);

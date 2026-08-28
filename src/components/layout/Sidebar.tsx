@@ -7,6 +7,7 @@ import { signOut, useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
+  Tag as TagIcon,
   Rss,
   Bookmark,
   Settings,
@@ -135,6 +136,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
 
   const [categories, setCategories] = useState<SidebarCategory[]>([]);
   const [totalUnread, setTotalUnread] = useState(0);
+  const [tags, setTags] = useState<{ id: string; name: string; count: number }[]>([]);
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
 
   const [editFeed, setEditFeed] = useState<{ id: string; title: string } | null>(null);
@@ -143,6 +145,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
 
   const activeFeedId = searchParams.get("feedId") || "";
   const activeCategoryId = searchParams.get("categoryId") || "";
+  const activeTagId = searchParams.get("tagId") || "";
 
   const handleEditSave = async (id: string, title: string, options?: { scrapeFullText?: boolean; refreshInterval?: number | null }) => {
     await fetch(`/api/feeds/${id}`, {
@@ -171,11 +174,18 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
 
   const fetchSidebar = useCallback(async () => {
     try {
-      const res = await fetch("/api/sidebar");
-      const data = await res.json();
-      if (res.ok && data.data) {
+      const [sideRes, tagsRes] = await Promise.all([
+        fetch("/api/sidebar"),
+        fetch("/api/tags"),
+      ]);
+      const data = await sideRes.json();
+      if (sideRes.ok && data.data) {
         setCategories(data.data.categories);
         setTotalUnread(data.data.totalUnread);
+      }
+      const tagsData = await tagsRes.json();
+      if (tagsRes.ok && Array.isArray(tagsData.data)) {
+        setTags(tagsData.data.filter((t: { count: number }) => t.count > 0));
       }
     } catch {
       /* silent */
@@ -287,7 +297,8 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
             const isActive =
               (pathname === item.href || pathname.startsWith(item.href + "/")) &&
               !activeFeedId &&
-              !activeCategoryId;
+              !activeCategoryId &&
+              !activeTagId;
             const Icon = item.icon;
 
             const linkClasses = cn(
@@ -456,6 +467,37 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
                   </Collapsible>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Tags */}
+        {!collapsed && tags.length > 0 && (
+          <div className="mt-4">
+            <Separator className="mb-3 bg-sidebar-border" />
+            <p className="mb-2 px-4 text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60">
+              Tags
+            </p>
+            <div className="flex flex-wrap gap-1.5 px-3">
+              {tags.map((tag) => (
+                <button
+                  key={tag.id}
+                  onClick={() => {
+                    router.push(`/feeds?tagId=${tag.id}`);
+                    onNavigate?.();
+                  }}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                    activeTagId === tag.id
+                      ? "border-primary/50 bg-primary/10 text-primary"
+                      : "border-sidebar-border text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
+                  )}
+                >
+                  <TagIcon size={11} />
+                  {tag.name}
+                  <span className="text-[10px] opacity-70">{tag.count}</span>
+                </button>
+              ))}
             </div>
           </div>
         )}

@@ -28,9 +28,10 @@ import {
   ClipboardCheck,
   MessageSquare,
   Send,
+  Tag as TagIcon,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import type { ArticleWithFeed } from "@/types";
+import type { ArticleWithFeed, ArticleTag } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -152,6 +153,9 @@ export const ArticlePanel = memo(function ArticlePanel({
   const [askInput, setAskInput] = useState("");
   const [askLoading, setAskLoading] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
+  const [tags, setTags] = useState<ArticleTag[]>(article?.tags ?? []);
+  const [tagInput, setTagInput] = useState("");
+  const [suggestingTags, setSuggestingTags] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [translateLang, setTranslateLang] = useState("tr");
@@ -182,6 +186,12 @@ export const ArticlePanel = memo(function ArticlePanel({
     setAskInput("");
     setAskOpen(false);
   }, [article?.id]);
+
+  // Sync tags when switching articles.
+  useEffect(() => {
+    setTags(article?.tags ?? []);
+    setTagInput("");
+  }, [article?.id, article?.tags]);
 
   useEffect(() => {
     if (!article) {
@@ -296,6 +306,66 @@ export const ArticlePanel = memo(function ArticlePanel({
       setLoadingAiSummary(false);
     }
   }, [article]);
+
+  const addTag = useCallback(
+    async (name: string) => {
+      if (!article) return;
+      const n = name.trim();
+      if (!n) return;
+      setTagInput("");
+      try {
+        const res = await fetch("/api/articles/tag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ articleId: article.id, action: "add", tagName: n }),
+        });
+        const data = await res.json();
+        if (res.ok) setTags(data.data.tags);
+        else toast.error(data.error || "Failed to add tag");
+      } catch {
+        toast.error("Connection error");
+      }
+    },
+    [article]
+  );
+
+  const removeTag = useCallback(
+    async (tagId: string) => {
+      if (!article) return;
+      try {
+        const res = await fetch("/api/articles/tag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ articleId: article.id, action: "remove", tagId }),
+        });
+        const data = await res.json();
+        if (res.ok) setTags(data.data.tags);
+      } catch {
+        /* silent */
+      }
+    },
+    [article]
+  );
+
+  const handleSuggestTags = useCallback(async () => {
+    if (!article || suggestingTags) return;
+    setSuggestingTags(true);
+    try {
+      const res = await fetch("/api/ai/suggest-tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleId: article.id }),
+      });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.data?.tags)) {
+        for (const t of data.data.tags) await addTag(t);
+      } else if (!res.ok) {
+        toast.error(data.error || "Failed to suggest tags");
+      }
+    } finally {
+      setSuggestingTags(false);
+    }
+  }, [article, suggestingTags, addTag]);
 
   const handleAsk = useCallback(
     async (question: string) => {
@@ -817,6 +887,52 @@ export const ArticlePanel = memo(function ArticlePanel({
             </div>
 
             <Separator className="my-6" />
+
+            {/* Tags */}
+            <div className="mb-6 flex flex-wrap items-center gap-2">
+              <TagIcon size={15} className="text-muted-foreground" />
+              {tags.map((t) => (
+                <span
+                  key={t.id}
+                  className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs text-foreground"
+                >
+                  {t.name}
+                  <button
+                    onClick={() => removeTag(t.id)}
+                    aria-label={`Remove tag ${t.name}`}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addTag(tagInput);
+                  }
+                }}
+                placeholder="Add tag…"
+                className="w-24 rounded-full border border-border bg-card px-2.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 focus:w-32 transition-all"
+              />
+              <button
+                onClick={handleSuggestTags}
+                disabled={suggestingTags}
+                title="Suggest tags with AI"
+                aria-label="Suggest tags with AI"
+                className="inline-flex items-center gap-1 rounded-full border border-primary/40 px-2.5 py-0.5 text-xs text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+              >
+                {suggestingTags ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Sparkles size={12} />
+                )}
+                AI
+              </button>
+            </div>
 
             {/* AI Summary */}
             {displayAiSummary && (

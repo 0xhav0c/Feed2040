@@ -52,7 +52,14 @@ export type ArticleWithFeed = {
   };
   isRead: boolean;
   isBookmarked: boolean;
+  tags?: ArticleTag[];
   createdAt: Date;
+};
+
+export type ArticleTag = {
+  id: string;
+  name: string;
+  color: string | null;
 };
 
 export type FeedPreview = {

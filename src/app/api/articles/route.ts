@@ -15,6 +15,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100);
     const feedId = searchParams.get("feedId") || "";
     const categoryId = searchParams.get("categoryId") || "";
+    const tagId = searchParams.get("tagId") || "";
     const filter = searchParams.get("filter") || "";
     const skip = (page - 1) * limit;
 
@@ -32,6 +33,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         ...where.feed,
         categories: { some: { categoryId } },
       };
+    }
+
+    if (tagId) {
+      where.tags = { some: { tagId } };
     }
 
     if (filter === "unread") {
@@ -116,6 +121,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             where: { userId: session.user.id },
             select: { id: true },
           },
+          tags: {
+            select: { tag: { select: { id: true, name: true, color: true } } },
+          },
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -144,6 +152,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       feed: a.feed,
       isRead: a.readArticles.length > 0,
       isBookmarked: a.bookmarks.length > 0,
+      tags: a.tags.map((t) => t.tag),
       createdAt: a.createdAt,
     }));
 
