@@ -216,6 +216,7 @@ model AISettings {
   provider      String  @default("openai")
   model         String  @default("gpt-4o-mini")
   digestModel   String  @default("gpt-4o")
+  embeddingModel String @default("text-embedding-3-small")
   autoSummarize Boolean @default(false)
   language      String  @default("tr")
 

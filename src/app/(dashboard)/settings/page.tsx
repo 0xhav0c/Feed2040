@@ -35,6 +35,8 @@ import {
   Highlighter,
   Bell,
   BellOff,
+  Search,
+  Database,
 } from "lucide-react";
 import { isPushSupported, getPushState, enablePush, disablePush, type PushState } from "@/lib/push-client";
 import { cn } from "@/lib/utils";
@@ -47,6 +49,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { UsersAdminTab } from "@/components/settings/UsersAdminTab";
 import { TelegramIcon } from "@/components/icons/BrandIcons";
 
@@ -774,10 +777,77 @@ function ModelSelector({
   );
 }
 
+// ── Semantic Search Index ────────────────────────────────────────────
+function SemanticIndexCard() {
+  const [status, setStatus] = useState<{ total: number; embedded: number; remaining: number } | null>(null);
+  const [building, setBuilding] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/articles/embed-backfill");
+      const data = await res.json();
+      if (res.ok) setStatus(data.data);
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function build() {
+    setBuilding(true);
+    try {
+      // Loop batches until nothing remains (or an error/limit stops us).
+      for (let i = 0; i < 200; i++) {
+        const res = await fetch("/api/articles/embed-backfill", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) {
+          if (res.status === 422) toast.error("Embeddings aren't available with your AI provider.");
+          else if (res.status === 429) { toast.message("Rate limited — pausing. Click again to resume."); }
+          else toast.error(data.error || "Indexing failed");
+          break;
+        }
+        setStatus((prev) => prev ? { ...prev, embedded: prev.total - data.data.remaining, remaining: data.data.remaining } : prev);
+        if (data.data.done || data.data.embedded === 0) { toast.success("Semantic index up to date"); break; }
+      }
+    } finally {
+      setBuilding(false);
+      load();
+    }
+  }
+
+  const pct = status && status.total > 0 ? Math.round((status.embedded / status.total) * 100) : 0;
+
+  return (
+    <Card className="rounded-2xl border border-border bg-card">
+      <CardContent className="p-6">
+        <SectionTitle icon={Database} title="Semantic Search" description="Index articles as embeddings for meaning-based search & related articles" />
+        {status && (
+          <div className="mb-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Indexed</span>
+              <span className="font-mono">{status.embedded} / {status.total} ({pct}%)</span>
+            </div>
+            <Progress value={pct} className="h-1.5" />
+          </div>
+        )}
+        <div className="flex items-center gap-3">
+          <Button onClick={build} disabled={building || (status?.remaining === 0 && status.total > 0)} className="rounded-xl">
+            {building ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
+            {building ? "Indexing..." : status?.remaining === 0 && status.total > 0 ? "Index up to date" : "Build index"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Requires an embeddings-capable provider. Re-run after adding feeds to index new articles.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── AI Settings Tab ──────────────────────────────────────────────────
 function AISettingsTab() {
   const [model, setModel] = useState("gpt-4o-mini");
   const [digestModel, setDigestModel] = useState("gpt-4o");
+  const [embeddingModel, setEmbeddingModel] = useState("text-embedding-3-small");
   const [language, setLanguage] = useState("en");
   const [baseUrl, setBaseUrl] = useState("");
   const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
@@ -842,6 +912,7 @@ function AISettingsTab() {
         if (aiRes.ok && aiData.data) {
           setModel(aiData.data.model || "gpt-4o-mini");
           setDigestModel(aiData.data.digestModel || "gpt-4o");
+          setEmbeddingModel(aiData.data.embeddingModel || "text-embedding-3-small");
           setLanguage(aiData.data.language || "en");
           const savedUrl = aiData.data.baseUrl || "";
           setBaseUrl(savedUrl);
@@ -908,7 +979,7 @@ function AISettingsTab() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model, digestModel, language,
+          model, digestModel, embeddingModel, language,
           baseUrl: baseUrl || null,
           briefingEnabled, briefingTimes, briefingTimezone, briefingHours, briefingCategories,
         }),
@@ -1003,6 +1074,21 @@ function AISettingsTab() {
             />
           </div>
 
+          <div className="mt-4">
+            <label className="mb-1 flex items-center gap-2 text-sm font-medium">
+              <Search size={14} /> Embedding Model
+            </label>
+            <p className="text-xs text-muted-foreground mb-2">
+              Powers semantic search &amp; &quot;related articles&quot;. Must be an embedding model your provider supports (1536 dims, e.g. text-embedding-3-small).
+            </p>
+            <Input
+              value={embeddingModel}
+              onChange={(e) => setEmbeddingModel(e.target.value)}
+              placeholder="text-embedding-3-small"
+              className="rounded-xl font-mono text-sm"
+            />
+          </div>
+
           <Separator className="my-4" />
           <div className="space-y-3">
             <div className="flex items-center gap-3">
@@ -1055,6 +1141,8 @@ function AISettingsTab() {
           </div>
         </CardContent>
       </Card>
+
+      <SemanticIndexCard />
 
       {/* Scheduled Daily Briefing */}
       <Card className="rounded-2xl border border-border bg-card">

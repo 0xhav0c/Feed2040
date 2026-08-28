@@ -7,6 +7,7 @@ import { z } from "zod";
 const aiSettingsSchema = z.object({
   model: z.string().min(1).optional(),
   digestModel: z.string().min(1).optional(),
+  embeddingModel: z.string().min(1).max(100).optional(),
   autoSummarize: z.boolean().optional(),
   language: z.string().min(2).optional(),
   baseUrl: z.string().url().optional().nullable(),
@@ -35,6 +36,7 @@ export async function GET(): Promise<NextResponse> {
     const defaults = {
       model: "gpt-4o-mini",
       digestModel: "gpt-4o",
+      embeddingModel: "text-embedding-3-small",
       autoSummarize: false,
       language: "en",
       baseUrl: baseUrl || "",
@@ -54,6 +56,7 @@ export async function GET(): Promise<NextResponse> {
       data: {
         model: aiSettings.model || defaults.model,
         digestModel: aiSettings.digestModel || defaults.digestModel,
+        embeddingModel: aiSettings.embeddingModel || defaults.embeddingModel,
         autoSummarize: aiSettings.autoSummarize,
         language: aiSettings.language || defaults.language,
         baseUrl: baseUrl || "",
@@ -95,6 +98,7 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
         provider: "openai",
         model: data.model ?? "gpt-4o-mini",
         digestModel: data.digestModel ?? "gpt-4o",
+        embeddingModel: data.embeddingModel ?? "text-embedding-3-small",
         autoSummarize: data.autoSummarize ?? false,
         language: data.language ?? "en",
         briefingEnabled: data.briefingEnabled ?? false,
@@ -106,6 +110,7 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
       update: {
         ...(data.model !== undefined && { model: data.model }),
         ...(data.digestModel !== undefined && { digestModel: data.digestModel }),
+        ...(data.embeddingModel !== undefined && { embeddingModel: data.embeddingModel }),
         ...(data.autoSummarize !== undefined && { autoSummarize: data.autoSummarize }),
         ...(data.language !== undefined && { language: data.language }),
         ...(data.briefingEnabled !== undefined && { briefingEnabled: data.briefingEnabled }),

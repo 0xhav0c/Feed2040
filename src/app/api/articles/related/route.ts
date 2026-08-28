@@ -60,6 +60,34 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ data: [] });
     }
 
+    // Prefer semantic (embedding) similarity when this article has been embedded;
+    // otherwise fall back to the keyword heuristic below.
+    try {
+      const hasEmb = await prisma.$queryRawUnsafe<{ has: boolean }[]>(
+        `SELECT ("embedding" IS NOT NULL) AS has FROM "Article" WHERE "id" = $1`,
+        articleId
+      );
+      if (hasEmb[0]?.has) {
+        const neighbors = await prisma.$queryRawUnsafe<
+          { id: string; title: string; url: string; publishedAt: Date | null; feedTitle: string }[]
+        >(
+          `SELECT r."id", r."title", r."url", r."publishedAt", rf."title" AS "feedTitle"
+           FROM "Article" r
+           JOIN "Feed" rf ON rf."id" = r."feedId"
+           WHERE rf."userId" = $2 AND r."id" <> $1 AND r."embedding" IS NOT NULL
+           ORDER BY r."embedding" <=> (SELECT "embedding" FROM "Article" WHERE "id" = $1)
+           LIMIT 5`,
+          articleId,
+          session.user.id
+        );
+        if (neighbors.length > 0) {
+          return NextResponse.json({ data: neighbors });
+        }
+      }
+    } catch (err) {
+      console.error("[Related] semantic path failed, falling back to keywords:", err);
+    }
+
     const sourceText = `${article.title} ${(article.summary || "").slice(0, 200)}`;
     const words = extractKeywords(sourceText);
     const uniqueWords = [...new Set(words)].slice(0, 8);

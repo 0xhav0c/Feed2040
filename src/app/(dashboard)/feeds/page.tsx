@@ -21,6 +21,7 @@ import {
   BookmarkPlus,
   Save,
   Bell,
+  Brain,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DigestModal } from "@/components/feed/DigestModal";
@@ -93,6 +94,8 @@ function FeedsContent() {
   const [filterTitle, setFilterTitle] = useState("");
 
   const [activeFilter, setActiveFilter] = useState<"" | "today" | "unread">("");
+  const [semanticMode, setSemanticMode] = useState(false);
+  const [semanticFallback, setSemanticFallback] = useState(false);
   const [todayCount, setTodayCount] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [markingAllRead, setMarkingAllRead] = useState(false);
@@ -133,6 +136,25 @@ function FeedsContent() {
       const reqId = ++requestIdRef.current;
       setLoading(true);
       try {
+        // Semantic mode: meaning-based search (falls back to keyword server-side).
+        if (semanticMode && q.trim()) {
+          const res = await fetch("/api/articles/semantic-search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ q }),
+          });
+          const data = await res.json();
+          if (requestIdRef.current !== reqId) return;
+          if (res.ok) {
+            setArticles(data.data);
+            setTotalPages(1);
+            setTotal(data.data.length);
+            setSemanticFallback(!!data.fallback);
+          }
+          return;
+        }
+        setSemanticFallback(false);
+
         const params = new URLSearchParams({
           page: String(p),
           limit: "50",
@@ -165,7 +187,7 @@ function FeedsContent() {
         if (requestIdRef.current === reqId) setLoading(false);
       }
     },
-    [feedId, categoryId, tagId, saved]
+    [feedId, categoryId, tagId, saved, semanticMode]
   );
 
   useEffect(() => {
@@ -188,7 +210,7 @@ function FeedsContent() {
   // most recent request wins regardless of resolution order.
   useEffect(() => {
     fetchArticles(page, searchQuery, activeFilter);
-  }, [feedId, categoryId, tagId, saved, page, searchQuery, activeFilter, fetchArticles]);
+  }, [feedId, categoryId, tagId, saved, page, searchQuery, activeFilter, semanticMode, fetchArticles]);
 
   useEffect(() => {
     if (!feedId && !categoryId && !tagId) {
@@ -726,29 +748,50 @@ function FeedsContent() {
 
             {/* Search */}
             <div className="border-b border-border px-3 py-2 flex-shrink-0">
-              <div className="relative">
-                <Search
-                  size={14}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-                />
-                <Input
-                  ref={searchRef}
-                  type="text"
-                  value={searchInput}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  placeholder="Search... (press /)"
-                  className="pl-8 pr-7 h-8 text-sm"
-                />
-                {searchInput && (
-                  <button
-                    onClick={clearSearch}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    aria-label="Clear search"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search
+                    size={14}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                  />
+                  <Input
+                    ref={searchRef}
+                    type="text"
+                    value={searchInput}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    placeholder={semanticMode ? "Search by meaning..." : "Search... (press /)"}
+                    className="pl-8 pr-7 h-8 text-sm"
+                  />
+                  {searchInput && (
+                    <button
+                      onClick={clearSearch}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label="Clear search"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSemanticMode((v) => !v)}
+                  title={semanticMode ? "Semantic search: on" : "Semantic search: off"}
+                  aria-label="Toggle semantic search"
+                  aria-pressed={semanticMode}
+                  className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors",
+                    semanticMode
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                >
+                  <Brain size={15} />
+                </button>
               </div>
+              {semanticMode && semanticFallback && searchQuery && (
+                <p className="mt-1.5 text-[11px] text-amber-500">
+                  Embeddings unavailable — showing keyword results. Build the index in Settings › AI.
+                </p>
+              )}
             </div>
 
             {/* Save a URL (read-it-later) */}
