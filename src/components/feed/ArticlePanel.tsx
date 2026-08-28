@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback, useState, useMemo, memo, useRef } from "react";
 import DOMPurify from "isomorphic-dompurify";
+import { marked } from "marked";
 import { cn } from "@/lib/utils";
 import {
   ExternalLink,
@@ -74,6 +75,19 @@ type HighlightItem = {
   color: string | null;
   createdAt: string;
 };
+
+// Render an AI answer written in Markdown to sanitized HTML.
+function renderMarkdown(md: string): string {
+  const html = marked.parse(md, { async: false, breaks: true }) as string;
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      "p", "br", "strong", "b", "em", "i", "a", "ul", "ol", "li",
+      "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "code", "hr",
+      "table", "thead", "tbody", "tr", "th", "td",
+    ],
+    ALLOWED_ATTR: ["href", "target", "rel"],
+  });
+}
 
 // Best-effort: wrap the first unmarked occurrence of `text` (within a single
 // text node) in a <mark>. Highlights spanning multiple elements aren't marked
@@ -1231,87 +1245,6 @@ export const ArticlePanel = memo(function ArticlePanel({
               </div>
             )}
 
-            {/* Ask AI */}
-            <div className="mb-6 rounded-xl border border-border bg-muted/30 p-4">
-              <button
-                onClick={() => setAskOpen((v) => !v)}
-                className="flex w-full items-center gap-2 text-left"
-                aria-expanded={askOpen}
-              >
-                <MessageSquare size={16} className="text-primary" />
-                <span className="text-sm font-bold text-foreground">Ask AI</span>
-                <ChevronDown
-                  size={15}
-                  className={cn(
-                    "ml-auto text-muted-foreground transition-transform",
-                    askOpen && "rotate-180"
-                  )}
-                />
-              </button>
-
-              {askOpen && (
-                <div className="mt-3 space-y-3">
-                  {askThread.length === 0 && !askLoading && (
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { label: "Key points", q: "What are the key points of this article?" },
-                        { label: "Simplify", q: "Explain this article in simple terms." },
-                        { label: "Why it matters", q: "Why does this matter and who is affected?" },
-                      ].map((preset) => (
-                        <button
-                          key={preset.label}
-                          onClick={() => handleAsk(preset.q)}
-                          className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {askThread.map((turn, i) => (
-                    <div key={i} className="space-y-1.5">
-                      <p className="text-sm font-medium text-foreground">{turn.q}</p>
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                        {turn.a}
-                      </p>
-                    </div>
-                  ))}
-
-                  {askLoading && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 size={14} className="animate-spin" />
-                      Thinking…
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={askInput}
-                      onChange={(e) => setAskInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleAsk(askInput);
-                        }
-                      }}
-                      placeholder="Ask a question about this article…"
-                      disabled={askLoading}
-                      className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50 disabled:opacity-60"
-                    />
-                    <button
-                      onClick={() => handleAsk(askInput)}
-                      disabled={askLoading || !askInput.trim()}
-                      aria-label="Send question"
-                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
-                    >
-                      <Send size={15} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* Media player (podcast/video) */}
             {article.enclosureUrl && article.enclosureType && isSafeUrl(article.enclosureUrl) && (
               <div className="mb-5 rounded-xl border border-border bg-muted/50 p-3">
@@ -1389,6 +1322,96 @@ export const ArticlePanel = memo(function ArticlePanel({
                     <ExternalLink size={14} />
                     Read on original site
                   </a>
+                </div>
+              )}
+            </div>
+
+            {/* Ask AI */}
+            <div className="mt-8 rounded-xl border border-border bg-muted/30 p-4">
+              <button
+                onClick={() => setAskOpen((v) => !v)}
+                className="flex w-full items-center gap-2 text-left"
+                aria-expanded={askOpen}
+              >
+                <MessageSquare size={16} className="text-primary" />
+                <span className="text-sm font-bold text-foreground">Ask AI</span>
+                <ChevronDown
+                  size={15}
+                  className={cn(
+                    "ml-auto text-muted-foreground transition-transform",
+                    askOpen && "rotate-180"
+                  )}
+                />
+              </button>
+
+              {askOpen && (
+                <div className="mt-3 space-y-3">
+                  {askThread.length === 0 && !askLoading && (
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: "Key points", q: "What are the key points of this article?" },
+                        { label: "Simplify", q: "Explain this article in simple terms." },
+                        { label: "Why it matters", q: "Why does this matter and who is affected?" },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          onClick={() => handleAsk(preset.q)}
+                          className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {askThread.map((turn, i) => (
+                    <div key={i} className="space-y-1.5">
+                      <p className="text-sm font-medium text-foreground">{turn.q}</p>
+                      <div
+                        className="text-sm leading-relaxed text-muted-foreground
+                          [&_h1]:text-sm [&_h1]:font-bold [&_h1]:text-foreground [&_h1]:mt-3 [&_h1]:mb-1
+                          [&_h2]:text-sm [&_h2]:font-bold [&_h2]:text-foreground [&_h2]:mt-3 [&_h2]:mb-1
+                          [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mt-2 [&_h3]:mb-1
+                          [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2
+                          [&_li]:mb-1 [&_strong]:font-semibold [&_strong]:text-foreground
+                          [&_a]:text-primary [&_a]:underline [&_hr]:my-3 [&_hr]:border-border
+                          [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs
+                          [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:italic"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(turn.a) }}
+                      />
+                    </div>
+                  ))}
+
+                  {askLoading && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 size={14} className="animate-spin" />
+                      Thinking…
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={askInput}
+                      onChange={(e) => setAskInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleAsk(askInput);
+                        }
+                      }}
+                      placeholder="Ask a question about this article…"
+                      disabled={askLoading}
+                      className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50 disabled:opacity-60"
+                    />
+                    <button
+                      onClick={() => handleAsk(askInput)}
+                      disabled={askLoading || !askInput.trim()}
+                      aria-label="Send question"
+                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      <Send size={15} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
