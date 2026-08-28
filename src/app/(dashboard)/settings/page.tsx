@@ -33,7 +33,10 @@ import {
   Tag as TagIcon,
   CheckCheck,
   Highlighter,
+  Bell,
+  BellOff,
 } from "lucide-react";
+import { isPushSupported, getPushState, enablePush, disablePush, type PushState } from "@/lib/push-client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1340,6 +1343,76 @@ function TelegramSettingsTab() {
   );
 }
 
+/* ─── Browser (Web Push) Notifications ─── */
+function BrowserNotificationsCard() {
+  const [state, setState] = useState<PushState>("unsupported");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isPushSupported()) { setState("unsupported"); return; }
+    getPushState().then(setState).catch(() => setState("unsupported"));
+  }, []);
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      if (state === "subscribed") {
+        await disablePush();
+        setState("unsubscribed");
+        toast.success("Browser notifications disabled");
+      } else {
+        const r = await enablePush();
+        if (r.ok) { setState("subscribed"); toast.success("Browser notifications enabled"); }
+        else { toast.error(r.error || "Failed to enable"); setState(await getPushState()); }
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendTest() {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/push/test", { method: "POST" });
+      if (r.ok) toast.success("Test notification sent");
+      else toast.error("Failed to send test");
+    } catch {
+      toast.error("Failed to send test");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="rounded-2xl border border-border bg-card">
+      <CardContent className="p-6">
+        <SectionTitle icon={Bell} title="Browser Notifications" description="Receive alerts as native browser / desktop notifications" />
+        {state === "unsupported" ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <BellOff size={14} /> Your browser doesn&apos;t support push notifications.
+          </p>
+        ) : state === "denied" ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <BellOff size={14} /> Notifications are blocked. Allow them in your browser&apos;s site settings, then reload.
+          </p>
+        ) : (
+          <div className="flex items-center justify-between gap-4">
+            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+              <Switch checked={state === "subscribed"} onCheckedChange={toggle} disabled={busy} />
+              {state === "subscribed" ? "Enabled on this device" : "Enable on this device"}
+            </label>
+            {state === "subscribed" && (
+              <Button variant="outline" size="sm" onClick={sendTest} disabled={busy} className="rounded-xl">
+                Send test
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ─── Notification Rules Tab ─── */
 type RuleAction = "markRead" | "star" | "tag";
 type NotificationRule = { id: string; name: string; keywords: string[]; isActive: boolean; notifyTelegram: boolean; actions?: RuleAction[]; tagName?: string | null };
@@ -1411,6 +1484,7 @@ function NotificationRulesTab() {
 
   return (
     <div className="space-y-6">
+      <BrowserNotificationsCard />
       <Card className="rounded-2xl border border-border bg-card">
         <CardContent className="p-6">
           <SectionTitle icon={Shield} title="Notification Rules" description="Get alerted and auto-act on new articles matching your keywords" />

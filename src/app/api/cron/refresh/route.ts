@@ -4,6 +4,7 @@ import { cacheDel } from "@/lib/redis";
 import { getBot } from "@/lib/telegram/bot";
 import { verifyCronAuth } from "@/lib/cron-auth";
 import { refreshFeed, runWithConcurrency } from "@/lib/rss/refresh";
+import { sendPushToUser } from "@/lib/push";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!verifyCronAuth(req)) {
@@ -176,28 +177,40 @@ async function checkNotificationRules(feedIds: string[], since: Date) {
         console.error(`[Rule] Failed to apply actions for "${rule.name}":`, err);
       }
 
-      if (rule.notifyTelegram && telegramSettings) {
-        const bot = await getBot(userId);
-        if (bot) {
-          const lines = [
-            `🔔 <b>Alert: ${escapeHtml(rule.name)}</b>`,
-            `${matched.length} matching article${matched.length > 1 ? "s" : ""} found:`,
-            "",
-            ...matched.slice(0, 5).map(
-              (a: (typeof recentArticles)[number]) => `• <a href="${escapeHtml(a.url)}">${escapeHtml(a.title)}</a>`
-            ),
-          ];
-          if (matched.length > 5) lines.push(`... and ${matched.length - 5} more`);
+      if (rule.notifyTelegram) {
+        if (telegramSettings) {
+          const bot = await getBot(userId);
+          if (bot) {
+            const lines = [
+              `🔔 <b>Alert: ${escapeHtml(rule.name)}</b>`,
+              `${matched.length} matching article${matched.length > 1 ? "s" : ""} found:`,
+              "",
+              ...matched.slice(0, 5).map(
+                (a: (typeof recentArticles)[number]) => `• <a href="${escapeHtml(a.url)}">${escapeHtml(a.title)}</a>`
+              ),
+            ];
+            if (matched.length > 5) lines.push(`... and ${matched.length - 5} more`);
 
-          try {
-            await bot.telegram.sendMessage(telegramSettings.chatId, lines.join("\n"), {
-              parse_mode: "HTML",
-              // @ts-expect-error Telegraf typing quirk
-              disable_web_page_preview: true,
-            });
-          } catch (err) {
-            console.error(`[Notify] Failed to send Telegram alert to ${userId}:`, err);
+            try {
+              await bot.telegram.sendMessage(telegramSettings.chatId, lines.join("\n"), {
+                parse_mode: "HTML",
+                // @ts-expect-error Telegraf typing quirk
+                disable_web_page_preview: true,
+              });
+            } catch (err) {
+              console.error(`[Notify] Failed to send Telegram alert to ${userId}:`, err);
+            }
           }
+        }
+
+        try {
+          await sendPushToUser(userId, {
+            title: `Alert: ${rule.name}`,
+            body: `${matched.length} matching article${matched.length > 1 ? "s" : ""}: ${matched[0].title}`,
+            url: "/feeds",
+          });
+        } catch (err) {
+          console.error(`[Notify] Failed to send push to ${userId}:`, err);
         }
       }
     }
@@ -237,7 +250,9 @@ async function checkSavedSearches(since: Date) {
       take: 20,
     });
     if (matched.length === 0) continue;
+    console.log(`[Monitor] Search "${s.name}" matched ${matched.length} new article(s) for user ${s.userId}`);
 
+    // Telegram (only if configured for this user).
     if (!tgCache.has(s.userId)) {
       tgCache.set(
         s.userId,
@@ -245,30 +260,49 @@ async function checkSavedSearches(since: Date) {
       );
     }
     const telegramSettings = tgCache.get(s.userId);
-    if (!telegramSettings) continue;
+    if (telegramSettings) {
+      const bot = await getBot(s.userId);
+      if (bot) {
+        const lines = [
+          `🔎 <b>Saved search: ${escapeHtml(s.name)}</b>`,
+          `${matched.length} new match${matched.length > 1 ? "es" : ""}:`,
+          "",
+          ...matched.slice(0, 5).map((a) => `• <a href="${escapeHtml(a.url)}">${escapeHtml(a.title)}</a>`),
+        ];
+        if (matched.length > 5) lines.push(`... and ${matched.length - 5} more`);
+        try {
+          await bot.telegram.sendMessage(telegramSettings.chatId, lines.join("\n"), {
+            parse_mode: "HTML",
+            // @ts-expect-error Telegraf typing quirk
+            disable_web_page_preview: true,
+          });
+        } catch (err) {
+          console.error(`[Monitor] Failed to send Telegram alert to ${s.userId}:`, err);
+        }
+      }
+    }
 
-    const bot = await getBot(s.userId);
-    if (!bot) continue;
-
-    console.log(`[Monitor] Search "${s.name}" matched ${matched.length} new article(s) for user ${s.userId}`);
-    const lines = [
-      `🔎 <b>Saved search: ${escapeHtml(s.name)}</b>`,
-      `${matched.length} new match${matched.length > 1 ? "es" : ""}:`,
-      "",
-      ...matched.slice(0, 5).map((a) => `• <a href="${escapeHtml(a.url)}">${escapeHtml(a.title)}</a>`),
-    ];
-    if (matched.length > 5) lines.push(`... and ${matched.length - 5} more`);
-
+    // Web push (independent of Telegram).
     try {
-      await bot.telegram.sendMessage(telegramSettings.chatId, lines.join("\n"), {
-        parse_mode: "HTML",
-        // @ts-expect-error Telegraf typing quirk
-        disable_web_page_preview: true,
+      await sendPushToUser(s.userId, {
+        title: `Saved search: ${s.name}`,
+        body: `${matched.length} new match${matched.length > 1 ? "es" : ""}: ${matched[0].title}`,
+        url: searchLink(s),
       });
     } catch (err) {
-      console.error(`[Monitor] Failed to send Telegram alert to ${s.userId}:`, err);
+      console.error(`[Monitor] Failed to send push to ${s.userId}:`, err);
     }
   }
+}
+
+// Rebuild the in-app link for a saved search so a push click lands on results.
+function searchLink(s: { query: string; feedId: string | null; categoryId: string | null; filter: string | null }): string {
+  const p = new URLSearchParams();
+  p.set("q", s.query);
+  if (s.feedId) p.set("feedId", s.feedId);
+  if (s.categoryId) p.set("categoryId", s.categoryId);
+  if (s.filter) p.set("filter", s.filter);
+  return `/feeds?${p.toString()}`;
 }
 
 function escapeHtml(s: string): string {

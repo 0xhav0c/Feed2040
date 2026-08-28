@@ -1,4 +1,4 @@
-const CACHE_NAME = "feed2040-v2";
+const CACHE_NAME = "feed2040-v3";
 const STATIC_ASSETS = ["/feeds", "/bookmarks", "/briefing", "/settings"];
 
 self.addEventListener("install", (event) => {
@@ -75,5 +75,41 @@ self.addEventListener("fetch", (event) => {
             )
         )
       )
+  );
+});
+
+// ─── Web push ───
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  const title = data.title || "Feed2040";
+  const options = {
+    body: data.body || "",
+    icon: "/icons/icon-192x192.svg",
+    badge: "/icons/icon-192x192.svg",
+    data: { url: data.url || "/feeds" },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/feeds";
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          if ("focus" in client) {
+            client.navigate(url);
+            return client.focus();
+          }
+        }
+        return self.clients.openWindow(url);
+      })
   );
 });

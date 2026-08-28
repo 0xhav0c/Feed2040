@@ -31,6 +31,7 @@ model User {
   tags              Tag[]
   highlights        Highlight[]
   savedSearches     SavedSearch[]
+  pushSubscriptions PushSubscription[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -312,6 +313,20 @@ model Tag {
   createdAt DateTime @default(now())
 
   @@unique([userId, name])
+  @@index([userId])
+}
+
+model PushSubscription {
+  id       String @id @default(cuid())
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
   @@index([userId])
 }
 
