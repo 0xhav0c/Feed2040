@@ -29,6 +29,10 @@ import {
   MessageSquare,
   Send,
   Tag as TagIcon,
+  Volume2,
+  Pause,
+  Play,
+  Square,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { ArticleWithFeed, ArticleTag } from "@/types";
@@ -156,6 +160,10 @@ export const ArticlePanel = memo(function ArticlePanel({
   const [tags, setTags] = useState<ArticleTag[]>(article?.tags ?? []);
   const [tagInput, setTagInput] = useState("");
   const [suggestingTags, setSuggestingTags] = useState(false);
+  const [ttsSupported, setTtsSupported] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [ttsPaused, setTtsPaused] = useState(false);
+  const [ttsRate, setTtsRate] = useState(1);
   const [translating, setTranslating] = useState(false);
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [translateLang, setTranslateLang] = useState("tr");
@@ -165,6 +173,7 @@ export const ArticlePanel = memo(function ArticlePanel({
   const [relatedArticles, setRelatedArticles] = useState<
     { id: string; title: string; url: string; feedTitle: string; publishedAt: string | null }[]
   >([]);
+  const ttsRateRef = useRef(1);
   const langPickerRef = useRef<HTMLDivElement>(null);
   const shareMenuRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -437,6 +446,61 @@ export const ArticlePanel = memo(function ArticlePanel({
 
   const rawContent = translatedContent || fullContent || article?.content;
   const displayAiSummary = aiSummary ?? article?.aiSummary ?? null;
+
+  // ─── Text-to-speech (Web Speech API, client-only, zero backend) ───
+  useEffect(() => {
+    setTtsSupported(typeof window !== "undefined" && "speechSynthesis" in window);
+  }, []);
+
+  const stopSpeech = useCallback(() => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeaking(false);
+    setTtsPaused(false);
+  }, []);
+
+  const handleSpeak = useCallback(() => {
+    if (!ttsSupported) return;
+    const synth = window.speechSynthesis;
+    if (speaking) { stopSpeech(); return; }
+
+    const bodyText = rawContent
+      ? new DOMParser().parseFromString(rawContent, "text/html").body.textContent || ""
+      : article?.summary || "";
+    const text = `${article?.title || ""}. ${bodyText}`.replace(/\s+/g, " ").trim();
+    if (!text) return;
+
+    synth.cancel();
+    // Chunk into sentence-sized pieces: some engines cut off very long utterances.
+    const chunks = text.match(/[^.!?]+[.!?]*\s*/g)?.filter((c) => c.trim()) || [text];
+    const lang = translatedContent ? translateLang : article?.feed?.language || undefined;
+    let idx = 0;
+    const speakNext = () => {
+      if (idx >= chunks.length) { setSpeaking(false); setTtsPaused(false); return; }
+      const u = new SpeechSynthesisUtterance(chunks[idx]);
+      if (lang) u.lang = lang;
+      u.rate = ttsRateRef.current;
+      u.onend = () => { idx++; speakNext(); };
+      u.onerror = () => { setSpeaking(false); setTtsPaused(false); };
+      synth.speak(u);
+    };
+    setSpeaking(true);
+    setTtsPaused(false);
+    speakNext();
+  }, [ttsSupported, speaking, stopSpeech, rawContent, article?.summary, article?.title, article?.feed?.language, translatedContent, translateLang]);
+
+  const handlePauseResume = useCallback(() => {
+    if (!ttsSupported) return;
+    const synth = window.speechSynthesis;
+    if (ttsPaused) { synth.resume(); setTtsPaused(false); }
+    else { synth.pause(); setTtsPaused(true); }
+  }, [ttsSupported, ttsPaused]);
+
+  // Stop narration when switching articles or unmounting.
+  useEffect(() => {
+    return () => { stopSpeech(); };
+  }, [article?.id, stopSpeech]);
 
   const htmlToMarkdown = useCallback((html: string): string => {
     const doc = new DOMParser().parseFromString(html, "text/html");
@@ -747,6 +811,47 @@ export const ArticlePanel = memo(function ArticlePanel({
             >
               <BookOpen size={15} />
             </Button>
+
+            {/* Text-to-speech */}
+            {ttsSupported && (
+              <div className="flex items-center">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleSpeak}
+                  className={cn(speaking && "bg-primary/10 text-primary")}
+                  title={speaking ? "Stop reading" : "Read aloud"}
+                  aria-label={speaking ? "Stop reading aloud" : "Read article aloud"}
+                >
+                  {speaking ? <Square size={14} /> : <Volume2 size={15} />}
+                </Button>
+                {speaking && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={handlePauseResume}
+                      title={ttsPaused ? "Resume" : "Pause"}
+                      aria-label={ttsPaused ? "Resume reading" : "Pause reading"}
+                    >
+                      {ttsPaused ? <Play size={14} /> : <Pause size={14} />}
+                    </Button>
+                    <button
+                      onClick={() => setTtsRate((r) => {
+                        const next = r >= 2 ? 0.75 : Math.round((r + 0.25) * 100) / 100;
+                        ttsRateRef.current = next;
+                        return next;
+                      })}
+                      className="flex h-7 items-center justify-center rounded-md px-1.5 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+                      title="Playback speed"
+                      aria-label="Change playback speed"
+                    >
+                      {ttsRate}x
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center gap-0 rounded-md border border-border mx-1">
               <button
