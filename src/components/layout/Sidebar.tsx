@@ -11,6 +11,9 @@ import {
   Rss,
   Bookmark,
   BookmarkPlus,
+  Search,
+  Bell,
+  Trash2,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -139,6 +142,9 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
   const [categories, setCategories] = useState<SidebarCategory[]>([]);
   const [totalUnread, setTotalUnread] = useState(0);
   const [tags, setTags] = useState<{ id: string; name: string; count: number }[]>([]);
+  const [savedSearches, setSavedSearches] = useState<
+    { id: string; name: string; query: string; feedId: string | null; categoryId: string | null; filter: string | null; notify: boolean }[]
+  >([]);
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
 
   const [editFeed, setEditFeed] = useState<{ id: string; title: string } | null>(null);
@@ -175,11 +181,30 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
     }
   };
 
+  const handleDeleteSearch = async (id: string) => {
+    setSavedSearches((prev) => prev.filter((s) => s.id !== id));
+    try {
+      await fetch(`/api/saved-searches/${id}`, { method: "DELETE" });
+    } catch {
+      /* silent; already removed optimistically */
+    }
+  };
+
+  const searchHref = (s: { query: string; feedId: string | null; categoryId: string | null; filter: string | null }) => {
+    const p = new URLSearchParams();
+    p.set("q", s.query);
+    if (s.feedId) p.set("feedId", s.feedId);
+    if (s.categoryId) p.set("categoryId", s.categoryId);
+    if (s.filter) p.set("filter", s.filter);
+    return `/feeds?${p.toString()}`;
+  };
+
   const fetchSidebar = useCallback(async () => {
     try {
-      const [sideRes, tagsRes] = await Promise.all([
+      const [sideRes, tagsRes, searchRes] = await Promise.all([
         fetch("/api/sidebar"),
         fetch("/api/tags"),
+        fetch("/api/saved-searches"),
       ]);
       const data = await sideRes.json();
       if (sideRes.ok && data.data) {
@@ -189,6 +214,10 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
       const tagsData = await tagsRes.json();
       if (tagsRes.ok && Array.isArray(tagsData.data)) {
         setTags(tagsData.data.filter((t: { count: number }) => t.count > 0));
+      }
+      const searchData = await searchRes.json();
+      if (searchRes.ok && Array.isArray(searchData.data)) {
+        setSavedSearches(searchData.data);
       }
     } catch {
       /* silent */
@@ -503,6 +532,47 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
                   {tag.name}
                   <span className="text-[10px] opacity-70">{tag.count}</span>
                 </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Saved Searches */}
+        {!collapsed && savedSearches.length > 0 && (
+          <div className="mt-4">
+            <Separator className="mb-3 bg-sidebar-border" />
+            <p className="mb-2 px-4 text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60">
+              Searches
+            </p>
+            <div className="space-y-0.5">
+              {savedSearches.map((s) => (
+                <div key={s.id} className="group flex items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    className="h-auto flex-1 justify-start gap-2.5 rounded-lg px-2.5 py-2 text-[0.8rem] min-w-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                    onClick={() => {
+                      router.push(searchHref(s));
+                      onNavigate?.();
+                    }}
+                  >
+                    <Search size={13} className="shrink-0 opacity-60" />
+                    <span className="flex-1 truncate text-left">{s.name}</span>
+                    {s.notify && (
+                      <span title="Monitoring on">
+                        <Bell size={11} className="shrink-0 text-primary/70" />
+                      </span>
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleDeleteSearch(s.id)}
+                    aria-label={`Delete search ${s.name}`}
+                  >
+                    <Trash2 size={12} />
+                  </Button>
+                </div>
               ))}
             </div>
           </div>

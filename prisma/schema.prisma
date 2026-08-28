@@ -30,6 +30,7 @@ model User {
   notificationRules NotificationRule[]
   tags              Tag[]
   highlights        Highlight[]
+  savedSearches     SavedSearch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -311,6 +312,24 @@ model Tag {
   createdAt DateTime @default(now())
 
   @@unique([userId, name])
+  @@index([userId])
+}
+
+model SavedSearch {
+  id         String  @id @default(cuid())
+  name       String
+  query      String            // keyword/text query
+  feedId     String?           // optional scope
+  categoryId String?           // optional scope
+  filter     String?           // "" | "unread" | "today" (link only)
+  notify     Boolean @default(false) // monitor new articles → Telegram alert
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
 }
 

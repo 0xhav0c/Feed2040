@@ -90,6 +90,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       } catch (err) {
         console.error("[Cron] Notification check error:", err);
       }
+      try {
+        await checkSavedSearches(refreshStartedAt);
+      } catch (err) {
+        console.error("[Cron] Saved-search monitor error:", err);
+      }
     }
 
     return NextResponse.json({
@@ -195,6 +200,73 @@ async function checkNotificationRules(feedIds: string[], since: Date) {
           }
         }
       }
+    }
+  }
+}
+
+// Saved-search monitoring: alert (Telegram) when new articles match a user's
+// monitored search. Only new articles (createdAt >= since) are considered, so
+// each match notifies exactly once.
+async function checkSavedSearches(since: Date) {
+  const searches = await prisma.savedSearch.findMany({ where: { notify: true } });
+  if (searches.length === 0) return;
+
+  // Cache Telegram settings + bot per user across their searches.
+  const tgCache = new Map<string, Awaited<ReturnType<typeof prisma.telegramSettings.findFirst>>>();
+
+  for (const s of searches) {
+    const q = s.query.trim();
+    if (!q) continue;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {
+      createdAt: { gte: since },
+      feed: { userId: s.userId, isSystem: false },
+      OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { summary: { contains: q, mode: "insensitive" } },
+        { content: { contains: q, mode: "insensitive" } },
+      ],
+    };
+    if (s.feedId) where.feedId = s.feedId;
+    if (s.categoryId) where.feed = { ...where.feed, categories: { some: { categoryId: s.categoryId } } };
+
+    const matched = await prisma.article.findMany({
+      where,
+      select: { title: true, url: true },
+      take: 20,
+    });
+    if (matched.length === 0) continue;
+
+    if (!tgCache.has(s.userId)) {
+      tgCache.set(
+        s.userId,
+        await prisma.telegramSettings.findFirst({ where: { userId: s.userId, isActive: true } })
+      );
+    }
+    const telegramSettings = tgCache.get(s.userId);
+    if (!telegramSettings) continue;
+
+    const bot = await getBot(s.userId);
+    if (!bot) continue;
+
+    console.log(`[Monitor] Search "${s.name}" matched ${matched.length} new article(s) for user ${s.userId}`);
+    const lines = [
+      `🔎 <b>Saved search: ${escapeHtml(s.name)}</b>`,
+      `${matched.length} new match${matched.length > 1 ? "es" : ""}:`,
+      "",
+      ...matched.slice(0, 5).map((a) => `• <a href="${escapeHtml(a.url)}">${escapeHtml(a.title)}</a>`),
+    ];
+    if (matched.length > 5) lines.push(`... and ${matched.length - 5} more`);
+
+    try {
+      await bot.telegram.sendMessage(telegramSettings.chatId, lines.join("\n"), {
+        parse_mode: "HTML",
+        // @ts-expect-error Telegraf typing quirk
+        disable_web_page_preview: true,
+      });
+    } catch (err) {
+      console.error(`[Monitor] Failed to send Telegram alert to ${s.userId}:`, err);
     }
   }
 }

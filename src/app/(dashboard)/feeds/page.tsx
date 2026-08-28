@@ -19,6 +19,8 @@ import {
   Eye,
   ArrowLeft,
   BookmarkPlus,
+  Save,
+  Bell,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DigestModal } from "@/components/feed/DigestModal";
@@ -75,6 +77,7 @@ function FeedsContent() {
   const categoryId = searchParams.get("categoryId") || "";
   const tagId = searchParams.get("tagId") || "";
   const saved = searchParams.get("saved") === "1";
+  const urlQuery = searchParams.get("q") || "";
 
   const [articles, setArticles] = useState<ArticleWithFeed[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +102,10 @@ function FeedsContent() {
   const [mobileShowArticle, setMobileShowArticle] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showDigest, setShowDigest] = useState(false);
+  const [showSaveSearch, setShowSaveSearch] = useState(false);
+  const [saveSearchName, setSaveSearchName] = useState("");
+  const [saveSearchNotify, setSaveSearchNotify] = useState(false);
+  const [savingSearch, setSavingSearch] = useState(false);
 
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -167,12 +174,14 @@ function FeedsContent() {
 
   // Reset view state when the selected feed/category/tag changes (no fetch here
   // — the fetch effect below reacts to the resulting state/dependency change).
+  // Reset view when nav params change; seed the search box from the URL's ?q=
+  // so saved-search links apply their query automatically.
   useEffect(() => {
     setPage(1);
-    setSearchQuery("");
-    setSearchInput("");
+    setSearchQuery(urlQuery);
+    setSearchInput(urlQuery);
     setActiveFilter("");
-  }, [feedId, categoryId, tagId, saved]);
+  }, [feedId, categoryId, tagId, saved, urlQuery]);
 
   // Single source of fetching. The out-of-order guard in fetchArticles ensures
   // that when navigation triggers both a feedId change and a page reset, the
@@ -385,6 +394,44 @@ function FeedsContent() {
     });
   }, [saveUrlParam, handleSaveUrl, router]);
 
+  const openSaveSearch = useCallback(() => {
+    setSaveSearchName(searchQuery || filterTitle || "");
+    setSaveSearchNotify(false);
+    setShowSaveSearch(true);
+  }, [searchQuery, filterTitle]);
+
+  const handleSaveSearch = useCallback(async () => {
+    const name = saveSearchName.trim();
+    if (!name || !searchQuery.trim() || savingSearch) return;
+    setSavingSearch(true);
+    try {
+      const res = await fetch("/api/saved-searches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          query: searchQuery.trim(),
+          feedId: feedId || null,
+          categoryId: categoryId || null,
+          filter: activeFilter || null,
+          notify: saveSearchNotify,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(saveSearchNotify ? "Search saved — monitoring on" : "Search saved");
+        setShowSaveSearch(false);
+        window.dispatchEvent(new Event("feed:read-changed"));
+      } else {
+        toast.error(data.error || "Failed to save search");
+      }
+    } catch {
+      toast.error("Connection error");
+    } finally {
+      setSavingSearch(false);
+    }
+  }, [saveSearchName, searchQuery, savingSearch, feedId, categoryId, activeFilter, saveSearchNotify]);
+
   const handleBookmarkToggle = useCallback(async (articleId: string) => {
     setArticles((prev) =>
       prev.map((a) =>
@@ -591,6 +638,17 @@ function FeedsContent() {
                   </p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  {searchQuery.trim() && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={openSaveSearch}
+                      title="Save this search"
+                      aria-label="Save this search"
+                    >
+                      <Save size={16} className="text-muted-foreground" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
@@ -839,6 +897,52 @@ function FeedsContent() {
       </div>
 
       <DigestModal open={showDigest} onClose={() => setShowDigest(false)} />
+
+      <Dialog open={showSaveSearch} onOpenChange={setShowSaveSearch}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <Save size={18} className="text-primary" />
+              <DialogTitle className="text-lg">Save Search</DialogTitle>
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Name</label>
+              <Input
+                autoFocus
+                value={saveSearchName}
+                onChange={(e) => setSaveSearchName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSaveSearch(); }}
+                placeholder="e.g., CVE watch"
+                maxLength={100}
+                className="mt-1"
+              />
+            </div>
+            <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+              Query: <span className="font-medium text-foreground">{searchQuery}</span>
+            </p>
+            <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={saveSearchNotify}
+                onChange={(e) => setSaveSearchNotify(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-primary"
+              />
+              <span className="flex items-center gap-1.5">
+                <Bell size={14} className="text-muted-foreground" />
+                Notify me on Telegram when new articles match
+              </span>
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowSaveSearch(false)}>Cancel</Button>
+              <Button onClick={handleSaveSearch} disabled={savingSearch || !saveSearchName.trim()}>
+                {savingSearch ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showHelpModal} onOpenChange={setShowHelpModal}>
         <DialogContent showCloseButton={false} className="max-w-sm">
