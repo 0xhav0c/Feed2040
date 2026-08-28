@@ -8,6 +8,8 @@ const patchSchema = z.object({
   keywords: z.array(z.string().min(1).max(100)).min(1).max(20).optional(),
   isActive: z.boolean().optional(),
   notifyTelegram: z.boolean().optional(),
+  actions: z.array(z.enum(["markRead", "star", "tag"])).max(3).optional(),
+  tagName: z.string().min(1).max(50).optional(),
 });
 
 export async function PATCH(

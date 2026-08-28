@@ -250,6 +250,8 @@ model NotificationRule {
   keywords  String[]
   isActive  Boolean  @default(true)
   notifyTelegram Boolean @default(true)
+  actions   String[] @default([]) // "markRead" | "star" | "tag"
+  tagName   String?               // tag applied when actions contains "tag"
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

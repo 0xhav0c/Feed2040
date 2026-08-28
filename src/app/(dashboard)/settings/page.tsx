@@ -29,6 +29,9 @@ import {
   Wifi,
   Copy,
   Lock,
+  Star,
+  Tag as TagIcon,
+  CheckCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -1337,7 +1340,8 @@ function TelegramSettingsTab() {
 }
 
 /* ─── Notification Rules Tab ─── */
-type NotificationRule = { id: string; name: string; keywords: string[]; isActive: boolean; notifyTelegram: boolean };
+type RuleAction = "markRead" | "star" | "tag";
+type NotificationRule = { id: string; name: string; keywords: string[]; isActive: boolean; notifyTelegram: boolean; actions?: RuleAction[]; tagName?: string | null };
 
 function NotificationRulesTab() {
   const [rules, setRules] = useState<NotificationRule[]>([]);
@@ -1346,7 +1350,17 @@ function NotificationRulesTab() {
   const [newName, setNewName] = useState("");
   const [newKeywords, setNewKeywords] = useState("");
   const [newTelegram, setNewTelegram] = useState(true);
+  const [newActions, setNewActions] = useState<RuleAction[]>([]);
+  const [newTagName, setNewTagName] = useState("");
   const [creating, setCreating] = useState(false);
+
+  function toggleAction(action: RuleAction) {
+    setNewActions((prev) => (prev.includes(action) ? prev.filter((a) => a !== action) : [...prev, action]));
+  }
+
+  function resetForm() {
+    setNewName(""); setNewKeywords(""); setNewTelegram(true); setNewActions([]); setNewTagName(""); setShowForm(false);
+  }
 
   const fetchRules = useCallback(async () => {
     try {
@@ -1361,15 +1375,22 @@ function NotificationRulesTab() {
 
   async function handleCreate() {
     if (!newName.trim() || !newKeywords.trim()) return;
+    if (newActions.includes("tag") && !newTagName.trim()) { toast.error("Enter a tag name for the Tag action"); return; }
     setCreating(true);
     try {
       const keywords = newKeywords.split(",").map((k) => k.trim()).filter(Boolean);
       const res = await fetch("/api/notification-rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName, keywords, notifyTelegram: newTelegram }),
+        body: JSON.stringify({
+          name: newName,
+          keywords,
+          notifyTelegram: newTelegram,
+          actions: newActions,
+          tagName: newActions.includes("tag") ? newTagName.trim() : undefined,
+        }),
       });
-      if (res.ok) { toast.success("Rule created"); setNewName(""); setNewKeywords(""); setShowForm(false); fetchRules(); }
+      if (res.ok) { toast.success("Rule created"); resetForm(); fetchRules(); }
       else { const data = await res.json(); toast.error(data.error || "Failed"); }
     } catch { toast.error("Failed"); }
     finally { setCreating(false); }
@@ -1391,7 +1412,7 @@ function NotificationRulesTab() {
     <div className="space-y-6">
       <Card className="rounded-2xl border border-border bg-card">
         <CardContent className="p-6">
-          <SectionTitle icon={Shield} title="Notification Rules" description="Get alerted when new articles match your keywords via Telegram" />
+          <SectionTitle icon={Shield} title="Notification Rules" description="Get alerted and auto-act on new articles matching your keywords" />
 
           {loading ? (
             <div className="flex justify-center py-8">
@@ -1412,7 +1433,17 @@ function NotificationRulesTab() {
                       ))}
                     </div>
                   </div>
-                  {rule.notifyTelegram && <span title="Telegram alerts"><Bot size={14} className="text-muted-foreground shrink-0" /></span>}
+                  <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground">
+                    {rule.notifyTelegram && <span title="Telegram alerts"><Bot size={14} /></span>}
+                    {rule.actions?.includes("markRead") && <span title="Auto mark as read"><CheckCheck size={14} /></span>}
+                    {rule.actions?.includes("star") && <span title="Auto star"><Star size={14} /></span>}
+                    {rule.actions?.includes("tag") && (
+                      <span title={`Auto tag: ${rule.tagName || ""}`} className="flex items-center gap-0.5">
+                        <TagIcon size={14} />
+                        {rule.tagName && <span className="text-[10px]">{rule.tagName}</span>}
+                      </span>
+                    )}
+                  </div>
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(rule.id)}
                     className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10">
                     <Trash2 size={14} />
@@ -1434,13 +1465,41 @@ function NotificationRulesTab() {
                         className="mt-1 rounded-xl" />
                     </div>
                   </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Automatic actions on match</label>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {([
+                        { key: "markRead", label: "Mark as read", icon: CheckCheck },
+                        { key: "star", label: "Star", icon: Star },
+                        { key: "tag", label: "Add tag", icon: TagIcon },
+                      ] as { key: RuleAction; label: string; icon: typeof Star }[]).map(({ key, label, icon: Icon }) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => toggleAction(key)}
+                          className={cn(
+                            "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                            newActions.includes(key)
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          <Icon size={13} /> {label}
+                        </button>
+                      ))}
+                    </div>
+                    {newActions.includes("tag") && (
+                      <Input type="text" value={newTagName} onChange={(e) => setNewTagName(e.target.value)}
+                        placeholder="Tag name (e.g., Security)" maxLength={50} className="mt-2 rounded-xl" />
+                    )}
+                  </div>
                   <div className="flex items-center justify-between">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <Switch checked={newTelegram} onCheckedChange={setNewTelegram} />
                       Send Telegram notifications
                     </label>
                     <div className="flex gap-2">
-                      <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+                      <Button variant="ghost" onClick={resetForm}>Cancel</Button>
                       <Button onClick={handleCreate} disabled={creating || !newName.trim() || !newKeywords.trim()}>
                         {creating ? "Creating..." : "Create Rule"}
                       </Button>

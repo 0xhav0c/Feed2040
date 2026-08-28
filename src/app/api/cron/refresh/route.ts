@@ -139,6 +139,37 @@ async function checkNotificationRules(feedIds: string[], since: Date) {
       if (matched.length === 0) continue;
       console.log(`[Notify] Rule "${rule.name}" matched ${matched.length} article(s) for user ${userId}`);
 
+      // Apply automatic actions (rule engine v1) on matching new articles.
+      const matchedIds = matched.map((a: (typeof recentArticles)[number]) => a.id);
+      try {
+        if (rule.actions?.includes("markRead")) {
+          await prisma.readArticle.createMany({
+            data: matchedIds.map((articleId: string) => ({ userId, articleId })),
+            skipDuplicates: true,
+          });
+        }
+        if (rule.actions?.includes("star")) {
+          await prisma.bookmark.createMany({
+            data: matchedIds.map((articleId: string) => ({ userId, articleId })),
+            skipDuplicates: true,
+          });
+        }
+        if (rule.actions?.includes("tag") && rule.tagName) {
+          const tag = await prisma.tag.upsert({
+            where: { userId_name: { userId, name: rule.tagName } },
+            create: { userId, name: rule.tagName },
+            update: {},
+            select: { id: true },
+          });
+          await prisma.articleTag.createMany({
+            data: matchedIds.map((articleId: string) => ({ articleId, tagId: tag.id })),
+            skipDuplicates: true,
+          });
+        }
+      } catch (err) {
+        console.error(`[Rule] Failed to apply actions for "${rule.name}":`, err);
+      }
+
       if (rule.notifyTelegram && telegramSettings) {
         const bot = await getBot(userId);
         if (bot) {

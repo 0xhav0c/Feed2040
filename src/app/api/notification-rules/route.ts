@@ -7,6 +7,8 @@ const createSchema = z.object({
   name: z.string().min(1).max(100),
   keywords: z.array(z.string().min(1).max(100)).min(1).max(20),
   notifyTelegram: z.boolean().optional(),
+  actions: z.array(z.enum(["markRead", "star", "tag"])).max(3).optional(),
+  tagName: z.string().min(1).max(50).optional(),
 });
 
 export async function GET(): Promise<NextResponse> {
@@ -48,6 +50,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         name: parsed.name,
         keywords: parsed.keywords,
         notifyTelegram: parsed.notifyTelegram ?? true,
+        actions: parsed.actions ?? [],
+        tagName: parsed.actions?.includes("tag") ? parsed.tagName ?? null : null,
       },
     });
 
