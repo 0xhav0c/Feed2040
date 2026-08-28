@@ -26,6 +26,8 @@ import {
   Copy,
   FileText,
   ClipboardCheck,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { ArticleWithFeed } from "@/types";
@@ -146,6 +148,10 @@ export const ArticlePanel = memo(function ArticlePanel({
   const [fontSize, setFontSize] = useState(16);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [loadingAiSummary, setLoadingAiSummary] = useState(false);
+  const [askThread, setAskThread] = useState<{ q: string; a: string }[]>([]);
+  const [askInput, setAskInput] = useState("");
+  const [askLoading, setAskLoading] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [translateLang, setTranslateLang] = useState("tr");
@@ -169,6 +175,13 @@ export const ArticlePanel = memo(function ArticlePanel({
     if (article?.aiSummary) setAiSummary(article.aiSummary);
     else setAiSummary(null);
   }, [article?.id, article?.aiSummary]);
+
+  // Reset the Ask-AI conversation when switching articles.
+  useEffect(() => {
+    setAskThread([]);
+    setAskInput("");
+    setAskOpen(false);
+  }, [article?.id]);
 
   useEffect(() => {
     if (!article) {
@@ -283,6 +296,34 @@ export const ArticlePanel = memo(function ArticlePanel({
       setLoadingAiSummary(false);
     }
   }, [article]);
+
+  const handleAsk = useCallback(
+    async (question: string) => {
+      if (!article || askLoading) return;
+      const q = question.trim();
+      if (!q) return;
+      setAskInput("");
+      setAskLoading(true);
+      try {
+        const res = await fetch("/api/ai/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ articleId: article.id, question: q }),
+        });
+        const data = await res.json();
+        if (res.ok && data.data?.answer) {
+          setAskThread((prev) => [...prev, { q, a: data.data.answer }]);
+        } else {
+          toast.error(data.error || "AI request failed");
+        }
+      } catch {
+        toast.error("Connection error");
+      } finally {
+        setAskLoading(false);
+      }
+    },
+    [article, askLoading]
+  );
 
   const handleTranslate = useCallback(async () => {
     const content = fullContent || article?.content || article?.summary;
@@ -789,6 +830,87 @@ export const ArticlePanel = memo(function ArticlePanel({
                 </p>
               </div>
             )}
+
+            {/* Ask AI */}
+            <div className="mb-6 rounded-xl border border-border bg-muted/30 p-4">
+              <button
+                onClick={() => setAskOpen((v) => !v)}
+                className="flex w-full items-center gap-2 text-left"
+                aria-expanded={askOpen}
+              >
+                <MessageSquare size={16} className="text-primary" />
+                <span className="text-sm font-bold text-foreground">Ask AI</span>
+                <ChevronDown
+                  size={15}
+                  className={cn(
+                    "ml-auto text-muted-foreground transition-transform",
+                    askOpen && "rotate-180"
+                  )}
+                />
+              </button>
+
+              {askOpen && (
+                <div className="mt-3 space-y-3">
+                  {askThread.length === 0 && !askLoading && (
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: "Key points", q: "What are the key points of this article?" },
+                        { label: "Simplify", q: "Explain this article in simple terms." },
+                        { label: "Why it matters", q: "Why does this matter and who is affected?" },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          onClick={() => handleAsk(preset.q)}
+                          className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {askThread.map((turn, i) => (
+                    <div key={i} className="space-y-1.5">
+                      <p className="text-sm font-medium text-foreground">{turn.q}</p>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                        {turn.a}
+                      </p>
+                    </div>
+                  ))}
+
+                  {askLoading && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 size={14} className="animate-spin" />
+                      Thinking…
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={askInput}
+                      onChange={(e) => setAskInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleAsk(askInput);
+                        }
+                      }}
+                      placeholder="Ask a question about this article…"
+                      disabled={askLoading}
+                      className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50 disabled:opacity-60"
+                    />
+                    <button
+                      onClick={() => handleAsk(askInput)}
+                      disabled={askLoading || !askInput.trim()}
+                      aria-label="Send question"
+                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      <Send size={15} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Media player (podcast/video) */}
             {article.enclosureUrl && article.enclosureType && isSafeUrl(article.enclosureUrl) && (
