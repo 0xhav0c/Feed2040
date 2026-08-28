@@ -84,6 +84,7 @@ model Feed {
   errorCount     Int     @default(0)
   scrapeFullText Boolean @default(false)
   refreshInterval Int?
+  isSystem       Boolean @default(false) // true for the per-user "Saved Articles" bucket (read-it-later)
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

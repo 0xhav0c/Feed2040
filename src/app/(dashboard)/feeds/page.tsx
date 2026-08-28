@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { ArticlePanel } from "@/components/feed/ArticlePanel";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import {
@@ -18,6 +18,7 @@ import {
   CalendarDays,
   Eye,
   ArrowLeft,
+  BookmarkPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DigestModal } from "@/components/feed/DigestModal";
@@ -69,9 +70,11 @@ export default function FeedsPage() {
 
 function FeedsContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const feedId = searchParams.get("feedId") || "";
   const categoryId = searchParams.get("categoryId") || "";
   const tagId = searchParams.get("tagId") || "";
+  const saved = searchParams.get("saved") === "1";
 
   const [articles, setArticles] = useState<ArticleWithFeed[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,6 +134,7 @@ function FeedsContent() {
         if (feedId) params.set("feedId", feedId);
         if (categoryId) params.set("categoryId", categoryId);
         if (tagId) params.set("tagId", tagId);
+        if (saved) params.set("saved", "1");
         if (filter) params.set("filter", filter);
 
         const res = await fetch(`/api/articles?${params}`);
@@ -154,7 +158,7 @@ function FeedsContent() {
         if (requestIdRef.current === reqId) setLoading(false);
       }
     },
-    [feedId, categoryId, tagId]
+    [feedId, categoryId, tagId, saved]
   );
 
   useEffect(() => {
@@ -168,14 +172,14 @@ function FeedsContent() {
     setSearchQuery("");
     setSearchInput("");
     setActiveFilter("");
-  }, [feedId, categoryId, tagId]);
+  }, [feedId, categoryId, tagId, saved]);
 
   // Single source of fetching. The out-of-order guard in fetchArticles ensures
   // that when navigation triggers both a feedId change and a page reset, the
   // most recent request wins regardless of resolution order.
   useEffect(() => {
     fetchArticles(page, searchQuery, activeFilter);
-  }, [feedId, categoryId, tagId, page, searchQuery, activeFilter, fetchArticles]);
+  }, [feedId, categoryId, tagId, saved, page, searchQuery, activeFilter, fetchArticles]);
 
   useEffect(() => {
     if (!feedId && !categoryId && !tagId) {
@@ -334,6 +338,53 @@ function FeedsContent() {
     }
   }, [fetchArticles, searchQuery, activeFilter]);
 
+  const [saveInput, setSaveInput] = useState("");
+  const [savingUrl, setSavingUrl] = useState(false);
+
+  const handleSaveUrl = useCallback(
+    async (rawUrl: string): Promise<boolean> => {
+      const url = rawUrl.trim();
+      if (!url || savingUrl) return false;
+      setSavingUrl(true);
+      try {
+        const res = await fetch("/api/save-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          if (data.data?.duplicate) toast.info("Already saved");
+          else toast.success("Saved for later");
+          setSaveInput("");
+          fetchArticles(1, "", "");
+          setPage(1);
+          return true;
+        }
+        toast.error(data.error || "Failed to save");
+        return false;
+      } catch {
+        toast.error("Connection error");
+        return false;
+      } finally {
+        setSavingUrl(false);
+      }
+    },
+    [savingUrl, fetchArticles]
+  );
+
+  // Bookmarklet target: /feeds?saved=1&saveUrl=<encoded>. Auto-save once, then
+  // strip the param so a refresh doesn't re-save.
+  const saveUrlParam = searchParams.get("saveUrl");
+  const savedUrlHandled = useRef(false);
+  useEffect(() => {
+    if (!saveUrlParam || savedUrlHandled.current) return;
+    savedUrlHandled.current = true;
+    handleSaveUrl(saveUrlParam).finally(() => {
+      router.replace("/feeds?saved=1");
+    });
+  }, [saveUrlParam, handleSaveUrl, router]);
+
   const handleBookmarkToggle = useCallback(async (articleId: string) => {
     setArticles((prev) =>
       prev.map((a) =>
@@ -461,7 +512,9 @@ function FeedsContent() {
 
   useKeyboardShortcuts(shortcuts);
 
-  const title = feedId
+  const title = saved
+    ? "Saved"
+    : feedId
     ? filterTitle || "Feed"
     : categoryId
     ? filterTitle || "Category"
@@ -640,6 +693,38 @@ function FeedsContent() {
               </div>
             </div>
 
+            {/* Save a URL (read-it-later) */}
+            {saved && (
+              <div className="border-b border-border px-3 py-2 flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="url"
+                    value={saveInput}
+                    onChange={(e) => setSaveInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveUrl(saveInput);
+                    }}
+                    placeholder="Paste a URL to save…"
+                    className="h-8 text-sm"
+                    disabled={savingUrl}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => handleSaveUrl(saveInput)}
+                    disabled={savingUrl || !saveInput.trim()}
+                    className="h-8 shrink-0 gap-1.5"
+                  >
+                    {savingUrl ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <BookmarkPlus size={14} />
+                    )}
+                    Save
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Article list */}
             <div ref={listRef} className="flex-1 overflow-y-auto">
               {loading ? (
@@ -649,14 +734,20 @@ function FeedsContent() {
               ) : articles.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-4 p-10">
                   <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10">
-                    <Rss className="h-7 w-7 text-primary" />
+                    {saved ? <BookmarkPlus className="h-7 w-7 text-primary" /> : <Rss className="h-7 w-7 text-primary" />}
                   </div>
                   <div className="text-center">
-                    <h3 className="text-base font-bold text-foreground">No articles</h3>
+                    <h3 className="text-base font-bold text-foreground">
+                      {saved ? "Nothing saved yet" : "No articles"}
+                    </h3>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {searchQuery ? "Try a different search" : "Add feeds to get started"}
+                      {saved
+                        ? "Paste any URL above to read it later."
+                        : searchQuery
+                        ? "Try a different search"
+                        : "Add feeds to get started"}
                     </p>
-                    {!searchQuery && (
+                    {!saved && !searchQuery && (
                       <Link
                         href="/feeds/add"
                         className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all"

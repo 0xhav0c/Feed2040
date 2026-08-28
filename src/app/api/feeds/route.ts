@@ -19,7 +19,7 @@ export async function GET(): Promise<NextResponse> {
 
   try {
     const feeds = await prisma.feed.findMany({
-      where: { userId: session.user.id },
+      where: { userId: session.user.id, isSystem: false },
       include: {
         categories: {
           include: {

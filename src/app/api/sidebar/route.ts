@@ -16,7 +16,7 @@ export async function GET(): Promise<NextResponse> {
     if (cached) return NextResponse.json(cached);
 
     const feeds = await prisma.feed.findMany({
-      where: { userId },
+      where: { userId, isSystem: false },
       select: {
         id: true,
         title: true,

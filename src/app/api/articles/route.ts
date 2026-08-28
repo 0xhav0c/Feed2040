@@ -17,11 +17,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const categoryId = searchParams.get("categoryId") || "";
     const tagId = searchParams.get("tagId") || "";
     const filter = searchParams.get("filter") || "";
+    const saved = searchParams.get("saved") === "1";
     const skip = (page - 1) * limit;
 
+    // Saved (read-it-later) articles live in the per-user system feed; every
+    // other view excludes it so saved items stay in their own bucket.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
-      feed: { userId: session.user.id },
+      feed: { userId: session.user.id, isSystem: saved },
     };
 
     if (feedId) {
@@ -93,7 +96,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         )) AS "unreadCount"
       FROM "Article" a
       JOIN "Feed" f ON f."id" = a."feedId"
-      WHERE f."userId" = $1${statsFilterClause}
+      WHERE f."userId" = $1 AND f."isSystem" = ${saved ? "TRUE" : "FALSE"}${statsFilterClause}
     `;
 
     const [articles, total, statsResult] = await Promise.all([

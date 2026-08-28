@@ -109,6 +109,80 @@ function findBestContentBlock($: cheerio.CheerioAPI): string | null {
   return null;
 }
 
+export interface ScrapedArticle {
+  title: string;
+  content: string | null;
+  imageUrl: string | null;
+  author: string | null;
+  excerpt: string | null;
+}
+
+/**
+ * Fetch an arbitrary web page once and extract article metadata + readable
+ * content (read-it-later). Reuses the same SSRF-safe fetch and content-block
+ * heuristics as scrapeFullText, but also returns title/image/author so a saved
+ * URL can be stored as a first-class Article.
+ */
+export async function scrapeArticle(url: string): Promise<ScrapedArticle | null> {
+  const validation = validateFeedUrl(url);
+  if (!validation.valid) return null;
+
+  try {
+    const { text: html, contentType } = await safeFetchText(url, {
+      timeoutMs: FETCH_TIMEOUT,
+      maxBytes: MAX_BODY_SIZE,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; Feed2040/1.0; +https://github.com/feed2040)",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+      },
+    });
+
+    if (!contentType.includes("text/html") && !contentType.includes("xhtml")) {
+      return null;
+    }
+
+    const $ = cheerio.load(html);
+
+    const meta = (name: string) =>
+      $(`meta[property="${name}"]`).attr("content") ||
+      $(`meta[name="${name}"]`).attr("content") ||
+      null;
+
+    const title =
+      meta("og:title") ||
+      meta("twitter:title") ||
+      $("title").first().text().trim() ||
+      $("h1").first().text().trim() ||
+      url;
+
+    const imageUrl = meta("og:image") || meta("twitter:image") || null;
+    const author =
+      meta("author") || meta("article:author") || $('[rel="author"]').first().text().trim() || null;
+
+    // Strip chrome before scoring the content block (mirrors scrapeFullText).
+    for (const sel of REMOVE_SELECTORS) {
+      $(sel).remove();
+    }
+    const content = findBestContentBlock($);
+
+    const excerpt = content
+      ? cheerio.load(content).text().replace(/\s+/g, " ").trim().slice(0, 300)
+      : null;
+
+    return {
+      title: title.slice(0, 500),
+      content,
+      imageUrl,
+      author: author ? author.slice(0, 200) : null,
+      excerpt,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function scrapeFullText(url: string): Promise<string | null> {
   const validation = validateFeedUrl(url);
   if (!validation.valid) return null;

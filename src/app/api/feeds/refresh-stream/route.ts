@@ -30,7 +30,7 @@ export async function POST(): Promise<Response> {
 
       try {
         const feeds = await prisma.feed.findMany({
-          where: { userId },
+          where: { userId, isSystem: false },
           select: {
             id: true, url: true, title: true, siteUrl: true,
             description: true, imageUrl: true, language: true,

@@ -10,6 +10,7 @@ import {
   Tag as TagIcon,
   Rss,
   Bookmark,
+  BookmarkPlus,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -106,6 +107,7 @@ type SidebarCategory = {
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, param: "" },
   { href: "/feeds", label: "All Feeds", icon: Rss, param: "" },
+  { href: "/feeds?saved=1", label: "Saved", icon: BookmarkPlus, param: "saved" },
   { href: "/bookmarks", label: "Read Later", icon: Bookmark, param: "" },
   { href: "/briefing", label: "Daily Briefing", icon: Sparkles, param: "" },
   { href: "/settings", label: "Settings", icon: Settings, param: "" },
@@ -146,6 +148,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
   const activeFeedId = searchParams.get("feedId") || "";
   const activeCategoryId = searchParams.get("categoryId") || "";
   const activeTagId = searchParams.get("tagId") || "";
+  const activeSaved = searchParams.get("saved") === "1";
 
   const handleEditSave = async (id: string, title: string, options?: { scrapeFullText?: boolean; refreshInterval?: number | null }) => {
     await fetch(`/api/feeds/${id}`, {
@@ -295,10 +298,13 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
         <div className="space-y-1">
           {NAV_ITEMS.map((item) => {
             const isActive =
-              (pathname === item.href || pathname.startsWith(item.href + "/")) &&
-              !activeFeedId &&
-              !activeCategoryId &&
-              !activeTagId;
+              item.param === "saved"
+                ? activeSaved
+                : (pathname === item.href || pathname.startsWith(item.href + "/")) &&
+                  !activeFeedId &&
+                  !activeCategoryId &&
+                  !activeTagId &&
+                  !activeSaved;
             const Icon = item.icon;
 
             const linkClasses = cn(

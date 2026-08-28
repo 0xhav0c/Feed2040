@@ -12,6 +12,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   try {
     const feeds = await prisma.feed.findMany({
+      where: { isSystem: false },
       select: {
         id: true,
         url: true,

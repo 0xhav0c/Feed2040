@@ -34,6 +34,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const feeds = await prisma.feed.findMany({
       where: {
         userId: session.user.id,
+        isSystem: false,
         ...(feedIdFilter ? { id: feedIdFilter } : {}),
       },
       select: {
