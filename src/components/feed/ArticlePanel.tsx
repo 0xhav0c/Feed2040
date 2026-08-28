@@ -33,6 +33,9 @@ import {
   Pause,
   Play,
   Square,
+  Highlighter,
+  Trash2,
+  StickyNote,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { ArticleWithFeed, ArticleTag } from "@/types";
@@ -63,6 +66,42 @@ type Props = {
   onBookmarkToggle: (id: string) => void;
   bookmarked: boolean;
 };
+
+type HighlightItem = {
+  id: string;
+  text: string;
+  note: string | null;
+  color: string | null;
+  createdAt: string;
+};
+
+// Best-effort: wrap the first unmarked occurrence of `text` (within a single
+// text node) in a <mark>. Highlights spanning multiple elements aren't marked
+// inline, but they still appear in the Highlights list.
+function markFirstOccurrence(root: HTMLElement, text: string) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const value = node.nodeValue || "";
+    const idx = value.indexOf(text);
+    if (idx === -1) continue;
+    const parent = (node as Text).parentElement;
+    if (parent?.closest("mark.f2040-hl")) continue;
+    try {
+      const range = document.createRange();
+      range.setStart(node, idx);
+      range.setEnd(node, idx + text.length);
+      const mark = document.createElement("mark");
+      mark.className = "f2040-hl";
+      mark.style.cssText =
+        "background: rgba(250,204,21,0.35); color: inherit; border-radius: 2px; padding: 0 1px;";
+      range.surroundContents(mark);
+    } catch {
+      /* selection crossed element boundaries — skip inline mark */
+    }
+    return;
+  }
+}
 
 function ImageZoomModal({
   src,
@@ -164,6 +203,11 @@ export const ArticlePanel = memo(function ArticlePanel({
   const [speaking, setSpeaking] = useState(false);
   const [ttsPaused, setTtsPaused] = useState(false);
   const [ttsRate, setTtsRate] = useState(1);
+  const [highlights, setHighlights] = useState<HighlightItem[]>([]);
+  const [selectionBox, setSelectionBox] = useState<{ text: string; top: number; left: number } | null>(null);
+  const [savingHighlight, setSavingHighlight] = useState(false);
+  const [noteEditId, setNoteEditId] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
   const [translating, setTranslating] = useState(false);
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [translateLang, setTranslateLang] = useState("tr");
@@ -502,6 +546,109 @@ export const ArticlePanel = memo(function ArticlePanel({
     return () => { stopSpeech(); };
   }, [article?.id, stopSpeech]);
 
+  // ─── Highlights & annotations ───
+  useEffect(() => {
+    if (!article) { setHighlights([]); return; }
+    let cancelled = false;
+    setSelectionBox(null);
+    setNoteEditId(null);
+    fetch(`/api/highlights?articleId=${encodeURIComponent(article.id)}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled && Array.isArray(d.data)) setHighlights(d.data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [article?.id]);
+
+  // Hide the floating highlight button while scrolling (its fixed position
+  // would otherwise drift away from the now-moved selection).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => setSelectionBox(null);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const handleTextSelection = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) { setSelectionBox(null); return; }
+    const text = sel.toString().replace(/\s+/g, " ").trim();
+    if (text.length < 3) { setSelectionBox(null); return; }
+    const anchor = sel.anchorNode;
+    if (!anchor || !contentRef.current?.contains(anchor)) { setSelectionBox(null); return; }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    setSelectionBox({
+      text: text.slice(0, 5000),
+      top: rect.top - 44,
+      left: rect.left + rect.width / 2,
+    });
+  }, []);
+
+  const createHighlight = useCallback(async () => {
+    if (!article || !selectionBox || savingHighlight) return;
+    setSavingHighlight(true);
+    try {
+      const res = await fetch("/api/highlights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleId: article.id, text: selectionBox.text }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setHighlights((prev) => [...prev, data.data]);
+        toast.success("Highlighted");
+      } else {
+        toast.error(data.error || "Failed to highlight");
+      }
+    } catch {
+      toast.error("Connection error");
+    } finally {
+      setSavingHighlight(false);
+      setSelectionBox(null);
+      window.getSelection()?.removeAllRanges();
+    }
+  }, [article, selectionBox, savingHighlight]);
+
+  const deleteHighlight = useCallback(async (id: string) => {
+    setHighlights((prev) => prev.filter((h) => h.id !== id));
+    try {
+      await fetch(`/api/highlights/${id}`, { method: "DELETE" });
+    } catch {
+      /* silent; list already updated optimistically */
+    }
+  }, []);
+
+  const saveNote = useCallback(async (id: string) => {
+    const note = noteDraft.trim();
+    setNoteEditId(null);
+    setHighlights((prev) => prev.map((h) => (h.id === id ? { ...h, note: note || null } : h)));
+    try {
+      await fetch(`/api/highlights/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: note || null }),
+      });
+    } catch {
+      toast.error("Failed to save note");
+    }
+  }, [noteDraft]);
+
+  const copyHighlights = useCallback(async () => {
+    if (!article || highlights.length === 0) return;
+    const lines = [`# ${article.title}`, ""];
+    for (const h of highlights) {
+      for (const ln of h.text.split("\n")) lines.push(`> ${ln}`);
+      if (h.note) lines.push("", `**Note:** ${h.note}`);
+      lines.push("");
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      toast.success("Highlights copied as Markdown");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  }, [article, highlights]);
+
   const htmlToMarkdown = useCallback((html: string): string => {
     const doc = new DOMParser().parseFromString(html, "text/html");
     function walk(node: Node): string {
@@ -681,6 +828,15 @@ export const ArticlePanel = memo(function ArticlePanel({
     });
   }, [rawContent, article?.feed?.siteUrl, article?.feed?.url]);
 
+  // Re-apply inline highlight marks after the body renders or highlights change.
+  // dangerouslySetInnerHTML replaces the DOM on content change, wiping marks, so
+  // this effect keys on both displayContent and highlights.
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root || highlights.length === 0) return;
+    for (const h of highlights) markFirstOccurrence(root, h.text);
+  }, [displayContent, highlights]);
+
   const isRtl = useMemo(() => {
     // Check feed language for known RTL languages
     const rtlLanguages = ["ar", "he", "fa", "ur"];
@@ -704,6 +860,18 @@ export const ArticlePanel = memo(function ArticlePanel({
     <>
       {zoomImage && (
         <ImageZoomModal src={zoomImage} onClose={() => setZoomImage(null)} />
+      )}
+
+      {selectionBox && (
+        <button
+          onMouseDown={(e) => { e.preventDefault(); createHighlight(); }}
+          disabled={savingHighlight}
+          style={{ position: "fixed", top: selectionBox.top, left: selectionBox.left, transform: "translateX(-50%)", zIndex: 70 }}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg hover:opacity-90 disabled:opacity-60"
+        >
+          {savingHighlight ? <Loader2 size={13} className="animate-spin" /> : <Highlighter size={13} />}
+          Highlight
+        </button>
       )}
 
       <div className="flex h-full flex-col">
@@ -1151,6 +1319,8 @@ export const ArticlePanel = memo(function ArticlePanel({
             {/* Article body */}
             <div
               ref={contentRef}
+              onMouseUp={handleTextSelection}
+              onTouchEnd={handleTextSelection}
               dir={isRtl ? "rtl" : undefined}
               className={cn(
                 "article-content max-w-none text-foreground transition-all",
@@ -1211,6 +1381,84 @@ export const ArticlePanel = memo(function ArticlePanel({
                 </div>
               )}
             </div>
+
+            {/* Highlights */}
+            {highlights.length > 0 && (
+              <div className="mt-8 border-t border-border pt-5">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                    <Highlighter size={14} className="text-amber-500" />
+                    Highlights
+                    <span className="font-normal text-muted-foreground">({highlights.length})</span>
+                  </h3>
+                  <button
+                    onClick={copyHighlights}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  >
+                    <FileText size={12} />
+                    Copy as Markdown
+                  </button>
+                </div>
+                <ul className="space-y-3">
+                  {highlights.map((h) => (
+                    <li key={h.id} className="rounded-xl border border-border bg-muted/30 p-3">
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="border-l-2 border-amber-400/60 pl-3 text-sm italic text-foreground">
+                            {h.text}
+                          </p>
+                          {noteEditId === h.id ? (
+                            <div className="mt-2 flex items-center gap-2">
+                              <input
+                                autoFocus
+                                value={noteDraft}
+                                onChange={(e) => setNoteDraft(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") { e.preventDefault(); saveNote(h.id); }
+                                  if (e.key === "Escape") setNoteEditId(null);
+                                }}
+                                placeholder="Add a note…"
+                                maxLength={2000}
+                                className="flex-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary/50"
+                              />
+                              <button
+                                onClick={() => saveNote(h.id)}
+                                className="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          ) : h.note ? (
+                            <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                              <StickyNote size={12} className="mt-0.5 shrink-0" />
+                              {h.note}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <button
+                            onClick={() => { setNoteEditId(h.id); setNoteDraft(h.note || ""); }}
+                            title="Add / edit note"
+                            aria-label="Add or edit note"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          >
+                            <StickyNote size={13} />
+                          </button>
+                          <button
+                            onClick={() => deleteHighlight(h.id)}
+                            title="Delete highlight"
+                            aria-label="Delete highlight"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Footer */}
             <div className="mt-8 flex items-center justify-between border-t border-border pt-5 pb-6">

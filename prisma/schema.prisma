@@ -29,6 +29,7 @@ model User {
   digests           Digest[]
   notificationRules NotificationRule[]
   tags              Tag[]
+  highlights        Highlight[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -120,6 +121,7 @@ model Article {
   bookmarks    Bookmark[]
   readArticles ReadArticle[]
   tags         ArticleTag[]
+  highlights   Highlight[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -310,6 +312,24 @@ model Tag {
 
   @@unique([userId, name])
   @@index([userId])
+}
+
+model Highlight {
+  id        String  @id @default(cuid())
+  text      String  @db.Text
+  note      String? @db.Text
+  color     String?
+
+  userId    String
+  articleId String
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([articleId])
+  @@index([userId, articleId])
 }
 
 model ArticleTag {

@@ -32,6 +32,7 @@ import {
   Star,
   Tag as TagIcon,
   CheckCheck,
+  Highlighter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -1529,6 +1530,7 @@ function DataTab() {
   const [importing, setImporting] = useState(false);
   const [exportingOpml, setExportingOpml] = useState(false);
   const [exportingJson, setExportingJson] = useState(false);
+  const [exportingHighlights, setExportingHighlights] = useState(false);
 
   async function handleImportOpml() {
     const input = document.createElement("input");
@@ -1599,6 +1601,29 @@ function DataTab() {
       toast.error("Export failed");
     } finally {
       setExportingJson(false);
+    }
+  }
+
+  async function handleExportHighlights() {
+    setExportingHighlights(true);
+    try {
+      const res = await fetch("/api/export/highlights");
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `feed2040-highlights-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success("Highlights exported");
+      } else {
+        toast.error("Export failed");
+      }
+    } catch {
+      toast.error("Export failed");
+    } finally {
+      setExportingHighlights(false);
     }
   }
 
@@ -1704,6 +1729,21 @@ function DataTab() {
               <Button onClick={handleExportJson} disabled={exportingJson} variant="outline" className="w-full rounded-xl">
                 {exportingJson ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
                 {exportingJson ? "Exporting..." : "Download JSON"}
+              </Button>
+            </div>
+            <div className="rounded-xl border border-border p-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
+                  <Highlighter size={18} className="text-amber-500" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">Export Highlights</p>
+                  <p className="text-xs text-muted-foreground">Markdown / Obsidian-friendly, grouped by article</p>
+                </div>
+              </div>
+              <Button onClick={handleExportHighlights} disabled={exportingHighlights} variant="outline" className="w-full rounded-xl">
+                {exportingHighlights ? <Loader2 size={16} className="animate-spin" /> : <Highlighter size={16} />}
+                {exportingHighlights ? "Exporting..." : "Download Markdown"}
               </Button>
             </div>
           </div>
