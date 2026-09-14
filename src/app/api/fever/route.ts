@@ -32,8 +32,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return json({ api_version: 3, auth: 0 }, 429);
   }
 
-  const formData = await req.formData();
-  const apiKey = (formData.get("api_key") as string) || "";
+  // Fever clients send parameters as a form body, but some (e.g. Readrops)
+  // issue GET requests or bodyless/JSON POSTs for certain calls. Parsing the
+  // body unconditionally throws when there is no form-encoded body, so guard it
+  // and fall back to query-string params, which Fever also permits.
+  let formData: FormData | null = null;
+  const contentType = req.headers.get("content-type") || "";
+  if (
+    req.method !== "GET" &&
+    (contentType.includes("multipart/form-data") ||
+      contentType.includes("application/x-www-form-urlencoded"))
+  ) {
+    try {
+      formData = await req.formData();
+    } catch {
+      formData = null;
+    }
+  }
+
+  const param = (name: string): string =>
+    (formData?.get(name) as string | null) ?? url.searchParams.get(name) ?? "";
+
+  const apiKey = param("api_key");
 
   const user = await authenticateApiKey(apiKey);
   const authOk = !!user;
@@ -109,38 +129,40 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   if (url.searchParams.has("items")) {
     const sinceId = parseInt(url.searchParams.get("since_id") || "0", 10);
-    const maxId = url.searchParams.get("max_id");
+    const maxIdRaw = url.searchParams.get("max_id");
     const withIds = url.searchParams.get("with_ids");
 
     const articleSelect = {
-      id: true, title: true, url: true, author: true, content: true,
+      id: true, seq: true, title: true, url: true, author: true, content: true,
       publishedAt: true, createdAt: true, feedId: true,
     } as const;
 
+    // Item ids are the article's monotonic "seq". Fever pagination:
+    //   since_id → items with seq GREATER THAN since_id (ascending)
+    //   max_id   → items with seq LESS THAN max_id (descending)
+    //   with_ids → the specific seqs requested
     let articles;
     if (withIds) {
-      const ids = withIds.split(",").map((i) => parseInt(i.trim(), 10));
-      const idSet = new Set(ids);
-      const allArticles = await prisma.article.findMany({
-        where: { feed: { userId: user.id } },
+      const ids = withIds.split(",").map((i) => parseInt(i.trim(), 10)).filter((n) => !isNaN(n));
+      articles = await prisma.article.findMany({
+        where: { feed: { userId: user.id }, seq: { in: ids } },
         select: articleSelect,
-        orderBy: { createdAt: "desc" },
-        take: 500,
+        orderBy: { seq: "asc" },
       });
-      articles = allArticles.filter((a) => idSet.has(hashId(a.id)));
-    } else {
-      const allArticles = await prisma.article.findMany({
-        where: { feed: { userId: user.id } },
+    } else if (maxIdRaw) {
+      const maxId = parseInt(maxIdRaw, 10);
+      articles = await prisma.article.findMany({
+        where: { feed: { userId: user.id }, seq: { lt: maxId } },
         select: articleSelect,
-        orderBy: { createdAt: "desc" },
+        orderBy: { seq: "desc" },
         take: 50,
       });
-
-      articles = allArticles.filter((a) => {
-        const numId = hashId(a.id);
-        if (sinceId && numId <= sinceId) return false;
-        if (maxId && numId >= parseInt(maxId, 10)) return false;
-        return true;
+    } else {
+      articles = await prisma.article.findMany({
+        where: { feed: { userId: user.id }, seq: { gt: sinceId } },
+        select: articleSelect,
+        orderBy: { seq: "asc" },
+        take: 50,
       });
     }
 
@@ -161,7 +183,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return json({
       ...base,
       items: articles.map((a) => ({
-        id: hashId(a.id),
+        id: a.seq,
         feed_id: hashId(a.feedId),
         title: a.title,
         author: a.author || "",
@@ -176,50 +198,47 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   if (url.searchParams.has("unread_item_ids")) {
-    const readIds = new Set(
-      (await prisma.readArticle.findMany({
-        where: { userId: user.id },
-        select: { articleId: true },
-      })).map((r) => r.articleId)
-    );
-
-    const allIds = await prisma.article.findMany({
-      where: { feed: { userId: user.id } },
-      select: { id: true },
+    const unread = await prisma.article.findMany({
+      where: {
+        feed: { userId: user.id },
+        readArticles: { none: { userId: user.id } },
+      },
+      select: { seq: true },
+      orderBy: { seq: "asc" },
     });
 
-    const unreadIds = allIds
-      .filter((a) => !readIds.has(a.id))
-      .map((a) => hashId(a.id));
-
-    return json({ ...base, unread_item_ids: unreadIds.join(",") });
+    return json({ ...base, unread_item_ids: unread.map((a) => a.seq).join(",") });
   }
 
   if (url.searchParams.has("saved_item_ids")) {
-    const bookmarks = await prisma.bookmark.findMany({
-      where: { userId: user.id },
-      select: { articleId: true },
+    const saved = await prisma.article.findMany({
+      where: {
+        feed: { userId: user.id },
+        bookmarks: { some: { userId: user.id } },
+      },
+      select: { seq: true },
+      orderBy: { seq: "asc" },
     });
 
     return json({
       ...base,
-      saved_item_ids: bookmarks.map((b) => hashId(b.articleId)).join(","),
+      saved_item_ids: saved.map((a) => a.seq).join(","),
     });
   }
 
   const mark = url.searchParams.get("mark");
-  const asParam = formData.get("as") as string;
-  const id = formData.get("id") as string;
+  const asParam = param("as");
+  const id = param("id");
 
   if (mark && asParam && id) {
     const numericId = parseInt(id, 10);
 
     if (mark === "item") {
-      const allIds = await prisma.article.findMany({
-        where: { feed: { userId: user.id } },
+      // Item ids are the article's "seq"; look it up directly.
+      const article = await prisma.article.findFirst({
+        where: { seq: numericId, feed: { userId: user.id } },
         select: { id: true },
       });
-      const article = allIds.find((a) => hashId(a.id) === numericId);
 
       if (article) {
         if (asParam === "read") {
@@ -252,7 +271,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const feed = feeds.find((f) => hashId(f.id) === numericId);
 
       if (feed) {
-        const beforeStr = formData.get("before") as string;
+        const beforeStr = param("before");
         const before = beforeStr ? new Date(parseInt(beforeStr, 10) * 1000) : new Date();
 
         const articles = await prisma.article.findMany({
@@ -275,7 +294,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const category = categories.find((c) => hashId(c.id) === numericId);
 
       if (category) {
-        const beforeStr = formData.get("before") as string;
+        const beforeStr = param("before");
         const before = beforeStr ? new Date(parseInt(beforeStr, 10) * 1000) : new Date();
 
         const articles = await prisma.article.findMany({
@@ -307,7 +326,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
 function hashId(cuid: string): number {
   const hash = crypto.createHash("md5").update(cuid).digest();
-  return (hash.readUInt32BE(0) ^ hash.readUInt32BE(4) ^ hash.readUInt32BE(8) ^ hash.readUInt32BE(12)) >>> 0;
+  // Mask to 31 bits (positive signed 32-bit range, max 2147483647). Fever
+  // clients like Readrops parse ids as signed ints; an unsigned value above
+  // 2^31-1 overflows their parser ("expected an int but 2582293886").
+  return (hash.readUInt32BE(0) ^ hash.readUInt32BE(4) ^ hash.readUInt32BE(8) ^ hash.readUInt32BE(12)) & 0x7fffffff;
 }
 
 function groupFeeds(feedCategories: { feedId: string; categoryId: string }[]) {

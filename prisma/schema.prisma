@@ -104,6 +104,7 @@ model Feed {
 
 model Article {
   id          String   @id @default(cuid())
+  seq         Int      @unique @default(autoincrement()) // monotonic id for Fever API since_id pagination
   title       String
   url         String
   content     String?  @db.Text
