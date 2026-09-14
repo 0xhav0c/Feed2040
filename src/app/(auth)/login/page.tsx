@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Rss, User, Lock, Loader2, ArrowRight, AlertCircle } from "lucide-react";
+import { Rss, User, Lock, Loader2, ArrowRight, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 function LoginForm() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState("");
@@ -118,15 +119,23 @@ function LoginForm() {
               />
               <Input
                 id="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
                 className={cn(
-                  "rounded-xl py-2.5 pl-10 pr-4 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  "rounded-xl py-2.5 pl-10 pr-10 focus:border-primary focus:ring-2 focus:ring-primary/20"
                 )}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
           <Button
@@ -143,6 +152,13 @@ function LoginForm() {
               </>
             )}
           </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            Forgot your password? Ask an admin to reset it, or run{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
+              scripts/reset-password.js
+            </code>{" "}
+            on the server.
+          </p>
         </form>
       </CardContent>
     </Card>

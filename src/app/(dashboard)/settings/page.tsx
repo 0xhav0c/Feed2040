@@ -575,7 +575,10 @@ function GeneralSettings() {
 
             {/* Change Password */}
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Lock size={14} className="text-muted-foreground" /> Change Password</h3>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Lock size={14} className="text-muted-foreground" /> Change Password</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Your login password for signing in to Feed2040.</p>
+              </div>
               <ChangePasswordForm />
             </div>
           </div>
@@ -651,6 +654,7 @@ function ChangePasswordForm() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
+  const [show, setShow] = useState(false);
 
   async function handleChange() {
     if (newPassword !== confirmPassword) {
@@ -680,39 +684,52 @@ function ChangePasswordForm() {
     }
   }
 
+  const inputType = show ? "text" : "password";
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl">
-      <Input
-        type="password"
-        placeholder="Current password"
-        value={currentPassword}
-        onChange={(e) => setCurrentPassword(e.target.value)}
-        className="rounded-xl"
-      />
-      <Input
-        type="password"
-        placeholder="New password"
-        value={newPassword}
-        onChange={(e) => setNewPassword(e.target.value)}
-        className="rounded-xl"
-      />
-      <div className="flex gap-2">
+    <div className="space-y-2 max-w-2xl">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Input
-          type="password"
-          placeholder="Confirm new password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleChange()}
+          type={inputType}
+          placeholder="Current password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
           className="rounded-xl"
         />
-        <Button
-          onClick={handleChange}
-          disabled={saving || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword}
-          className="rounded-xl shrink-0"
-        >
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
-        </Button>
+        <Input
+          type={inputType}
+          placeholder="New password (min 6 chars)"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          className="rounded-xl"
+        />
+        <div className="flex gap-2">
+          <Input
+            type={inputType}
+            placeholder="Confirm new password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleChange()}
+            className="rounded-xl"
+          />
+          <Button
+            onClick={handleChange}
+            disabled={saving || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword}
+            className="rounded-xl shrink-0"
+            title="Update password"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
+          </Button>
+        </div>
       </div>
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+      >
+        {show ? <EyeOff size={12} /> : <Eye size={12} />}
+        {show ? "Hide passwords" : "Show passwords"}
+      </button>
     </div>
   );
 }
@@ -1924,6 +1941,7 @@ function FeverApiTab() {
   const [password, setPassword] = useState("");
   const [generating, setGenerating] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [showPw, setShowPw] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings/fever")
@@ -2016,6 +2034,14 @@ function FeverApiTab() {
                 <span>Fever API is enabled</span>
               </div>
 
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  <strong>Note:</strong> The Fever password is <strong>not</strong> your
+                  Feed2040 login password. It is a separate password only for RSS reader
+                  apps. It can&apos;t be shown again — if you forget it, just set a new one below.
+                </p>
+              </div>
+
               <div>
                 <label className="mb-1.5 block text-sm font-medium">API Endpoint</label>
                 <div className="flex items-center gap-2">
@@ -2053,11 +2079,43 @@ function FeverApiTab() {
               <div className="rounded-xl border border-border bg-muted/50 p-4">
                 <p className="text-sm font-medium mb-2">How to connect</p>
                 <ol className="text-xs text-muted-foreground space-y-1 list-decimal pl-4">
-                  <li>Open your RSS reader app (Reeder, Fluent Reader, Read You, etc.)</li>
-                  <li>Choose &quot;Fever&quot; as the sync service</li>
-                  <li>Enter the API endpoint above as the server URL</li>
-                  <li>Use your username <strong className="text-foreground">{username}</strong> and the password you set</li>
+                  <li>Open your RSS reader app (Readrops, Reeder, Fluent Reader, Read You, etc.)</li>
+                  <li>Choose <strong className="text-foreground">&quot;Fever&quot;</strong> as the sync service</li>
+                  <li>Enter this as the server URL: <strong className="text-foreground break-all">{endpoint}</strong></li>
+                  <li>Username: <strong className="text-foreground">{username}</strong></li>
+                  <li>Password: the <strong className="text-foreground">Fever password</strong> you set (not your login password)</li>
                 </ol>
+              </div>
+
+              <div className="space-y-2 border-t border-border pt-4">
+                <label className="block text-sm font-medium">Change Fever password</label>
+                <p className="text-[11px] text-muted-foreground">
+                  Forgot it or want a new one? Set a new Fever password here, then update it in your reader app.
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      type={showPw ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="New Fever password"
+                      className="text-sm pr-9"
+                      onKeyDown={(e) => { if (e.key === "Enter") handleGenerate(); }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw((s) => !s)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label={showPw ? "Hide password" : "Show password"}
+                    >
+                      {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                  <Button onClick={handleGenerate} disabled={generating || !password} className="shrink-0">
+                    {generating ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Key size={14} className="mr-2" />}
+                    Update
+                  </Button>
+                </div>
               </div>
 
               <Button variant="destructive" size="sm" onClick={handleDisable}>
@@ -2079,15 +2137,25 @@ function FeverApiTab() {
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium">Password</label>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter a password for Fever API"
-                  className="text-sm"
-                />
+                <div className="relative">
+                  <Input
+                    type={showPw ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter a password for Fever API"
+                    className="text-sm pr-9"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw((s) => !s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label={showPw ? "Hide password" : "Show password"}
+                  >
+                    {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  This can be different from your login password
+                  This is a separate password, not your login password. You&apos;ll enter it in your RSS reader app.
                 </p>
               </div>
 
