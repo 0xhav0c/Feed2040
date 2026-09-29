@@ -1,4 +1,4 @@
-const CACHE_NAME = "feed2040-v3";
+const CACHE_NAME = "feed2040-v4";
 const STATIC_ASSETS = ["/feeds", "/bookmarks", "/briefing", "/settings"];
 
 self.addEventListener("install", (event) => {
@@ -24,6 +24,12 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (request.method !== "GET") return;
+
+  // Only handle same-origin http(s) requests. Browser extensions issue
+  // chrome-extension:// requests that the Cache API cannot store, and
+  // cross-origin responses are left to the browser to handle.
+  if (url.protocol !== "http:" && url.protocol !== "https:") return;
+  if (url.origin !== self.location.origin) return;
 
   // API requests: network-only, no caching
   if (url.pathname.startsWith("/api/")) {
