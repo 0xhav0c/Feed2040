@@ -16,7 +16,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 RUN npx prisma generate
-RUN npm run build
+# Cap the heap so a build on the 7 GB home server fails instead of starving it
+RUN NODE_OPTIONS=--max-old-space-size=1536 npm run build
 
 # ─── Runner ────────────────────────────────────────────
 FROM node:22-alpine AS runner
