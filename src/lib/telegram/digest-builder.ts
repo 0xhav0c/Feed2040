@@ -1,16 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { sendMessage } from "@/lib/telegram/bot";
-import { format } from "date-fns";
 import type { StructuredDigestResult } from "@/lib/ai/summarizer";
+import { generateAndStoreDigest, userTodayKey } from "@/lib/ai/digest-service";
 
 interface DigestUserContext {
   userId: string;
   chatId: string;
   language: string;
-}
-
-function todayKey(): string {
-  return format(new Date(), "yyyy-MM-dd");
 }
 
 function esc(text: string): string {
@@ -77,28 +73,33 @@ function formatSingleBriefItem(
   return lines.join("\n");
 }
 
+export type SendDigestResult = "sent" | "no-articles" | "ai-failed" | "send-failed";
+
 export async function buildAndSendDigest(
   ctx: DigestUserContext
-): Promise<boolean> {
-  const { userId, chatId } = ctx;
-  const date = todayKey();
+): Promise<SendDigestResult> {
+  const { userId, chatId, language } = ctx;
+  const date = await userTodayKey(userId);
 
   const latestDigest = await prisma.digest.findFirst({
     where: {
       userId,
       date,
-      source: { in: ["web", "scheduled"] },
+      source: { in: ["web", "scheduled", "telegram"] },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  if (!latestDigest?.structured) {
-    console.log("[TelegramDigest] No digest found for today to send");
-    return false;
+  let results = latestDigest?.structured as unknown as StructuredDigestResult[] | undefined;
+  if (!Array.isArray(results) || results.length === 0) {
+    // Nothing generated today yet — build one now instead of failing.
+    const generated = await generateAndStoreDigest({ userId, hours: 24, source: "telegram", language });
+    if (!generated.ok) {
+      console.log(`[TelegramDigest] No digest for ${userId}: ${generated.reason}`);
+      return generated.reason;
+    }
+    results = generated.structured;
   }
-
-  const results = latestDigest.structured as unknown as StructuredDigestResult[];
-  if (!Array.isArray(results) || results.length === 0) return false;
 
   const allItems: { item: StructuredDigestResult["items"][number]; categoryName: string }[] = [];
   for (const section of results) {
@@ -107,7 +108,7 @@ export async function buildAndSendDigest(
     }
   }
 
-  if (allItems.length === 0) return false;
+  if (allItems.length === 0) return "no-articles";
 
   try {
     const dateStr = new Date().toLocaleDateString("en-US", {
@@ -130,9 +131,9 @@ export async function buildAndSendDigest(
     const footerMsg = `━━━━━━━━━━━━━━━━━━━━━━\n✅ <b>${sent}/${allItems.length}</b> briefing items delivered.`;
     await sendMessage(chatId, footerMsg, "HTML", userId);
 
-    return sent > 0;
+    return sent > 0 ? "sent" : "send-failed";
   } catch (error) {
     console.error("Digest send error:", error);
-    return false;
+    return "send-failed";
   }
 }

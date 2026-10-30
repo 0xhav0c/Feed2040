@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { isValidTimezone } from "@/lib/timezone";
 
 const telegramSettingsSchema = z.object({
   isActive: z.boolean().optional(),
-  scheduleTimes: z.array(z.string()).optional(),
-  timezone: z.string().optional(),
+  scheduleTimes: z
+    .array(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Times must be HH:MM (24h)"))
+    .max(12)
+    .optional(),
+  timezone: z.string().refine(isValidTimezone, "Unknown timezone").optional(),
   summaryCategories: z.array(z.string()).optional(),
 });
 

@@ -85,6 +85,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         return;
       }
 
+      // telegramUserId is unique: linking this Telegram account to a new app
+      // account releases it from whichever account held it before.
+      await prisma.telegramSettings.deleteMany({
+        where: { telegramUserId, NOT: { userId: payload.userId } },
+      });
+
       await prisma.telegramSettings.upsert({
         where: { userId: payload.userId },
         create: {
@@ -158,17 +164,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       await bot.telegram.sendMessage(chatId, "⏳ Preparing daily briefing...");
 
       const language = settings.user.aiSettings?.language || "tr";
-      const ok = await buildAndSendDigest({
+      const result = await buildAndSendDigest({
         userId: settings.userId,
         chatId: chatId.toString(),
         language,
       });
 
-      if (!ok) {
+      if (result === "no-articles") {
+        await bot.telegram.sendMessage(chatId, "No new articles in the last 24 hours to brief on.");
+      } else if (result === "ai-failed") {
         await bot.telegram.sendMessage(
           chatId,
           "Briefing generation failed. Check your AI API key settings."
         );
+      } else if (result === "send-failed") {
+        await bot.telegram.sendMessage(chatId, "Briefing was generated but could not be delivered. Try again later.");
       }
     };
 

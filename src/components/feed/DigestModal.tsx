@@ -73,7 +73,7 @@ export function DigestModal({ open, onClose }: DigestModalProps) {
   async function loadCached() {
     setInitialLoading(true);
     try {
-      const res = await fetch("/api/ai/daily-digest?date=" + new Date().toISOString().slice(0, 10));
+      const res = await fetch("/api/ai/daily-digest");
       const data = await res.json();
       if (res.ok && data.data?.length > 0) {
         const latest = data.data[0];

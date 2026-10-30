@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { generateDailyDigest } from "@/lib/ai/summarizer";
 import { formatStructuredDigest } from "@/lib/telegram/bot";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
-import { subHours, format } from "date-fns";
-
-function todayKey(): string {
-  return format(new Date(), "yyyy-MM-dd");
-}
+import { generateAndStoreDigest, userTodayKey } from "@/lib/ai/digest-service";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const session = await auth();
@@ -17,7 +12,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const { searchParams } = new URL(req.url);
-  const date = searchParams.get("date") || todayKey();
+  const date = searchParams.get("date") || (await userTodayKey(session.user.id));
 
   const digests = await prisma.digest.findMany({
     where: { userId: session.user.id, date },
@@ -58,19 +53,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       hours?: number;
       forceRefresh?: boolean;
     };
-    const hours = raw.hours ?? 24;
+    const hours = Number(raw.hours ?? 24) || 24;
     const forceRefresh = raw.forceRefresh ?? false;
-    const categoryIds = raw.categoryIds || (raw.categoryId ? [raw.categoryId] : undefined);
+    const categoryIds = (raw.categoryIds || (raw.categoryId ? [raw.categoryId] : []))
+      .filter((id): id is string => typeof id === "string");
 
     const safeHours = Math.min(Math.max(hours, 1), 168);
-    const date = todayKey();
+    const userId = session.user.id;
 
-    if (!forceRefresh) {
+    // The cache key has no category dimension (Digest stores none), so a
+    // filtered request must never be answered with an unfiltered digest.
+    if (!forceRefresh && categoryIds.length === 0) {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const cached = await prisma.digest.findFirst({
         where: {
-          userId: session.user.id,
-          date,
+          userId,
+          date: await userTodayKey(userId),
           hours: safeHours,
           source: "web",
           createdAt: { gte: oneHourAgo },
@@ -81,7 +79,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (cached) {
         const structured = cached.structured as unknown[];
         const aiSettings = await prisma.aISettings.findUnique({
-          where: { userId: session.user.id },
+          where: { userId },
         });
         const language = aiSettings?.language || "en";
         const digest = formatStructuredDigest(
@@ -94,69 +92,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const since = subHours(new Date(), safeHours);
-
-    const whereClause = {
-      feed: {
-        userId: session.user.id,
-        ...(categoryIds?.length
-          ? {
-              categories: {
-                some: { categoryId: { in: categoryIds } },
-              },
-            }
-          : {}),
-      },
-      publishedAt: { gte: since },
-    };
-
-    const articles = await prisma.article.findMany({
-      where: whereClause,
-      orderBy: { publishedAt: "desc" },
-      take: 200,
-      include: { feed: { select: { title: true } } },
+    const result = await generateAndStoreDigest({
+      userId,
+      hours: safeHours,
+      source: "web",
+      categoryIds,
     });
 
-    const digestArticles = articles.map((a: { title: string; aiSummary: string | null; summary: string | null; feed: { title: string }; url: string }) => ({
-      title: a.title,
-      summary: a.aiSummary || a.summary,
-      feedTitle: a.feed.title,
-      url: a.url,
-    }));
-
-    const aiSettings = await prisma.aISettings.findUnique({
-      where: { userId: session.user.id },
-    });
-    const language = aiSettings?.language || "en";
-
-    const results = await generateDailyDigest(
-      digestArticles,
-      language,
-      session.user.id
-    );
-
-    if (!results) {
-      return NextResponse.json(
-        { error: "AI API key not configured or digest generation failed" },
-        { status: 503 }
-      );
+    if (!result.ok) {
+      return result.reason === "no-articles"
+        ? NextResponse.json(
+            { error: `No articles published in the last ${safeHours} hours for this selection` },
+            { status: 404 }
+          )
+        : NextResponse.json(
+            { error: "AI API key not configured or digest generation failed" },
+            { status: 503 }
+          );
     }
 
-    const digest = formatStructuredDigest(results, language);
-
-    const saved = await prisma.digest.create({
-      data: {
-        userId: session.user.id,
-        date,
-        hours: safeHours,
-        source: "web",
-        structured: results as unknown as Parameters<typeof prisma.digest.create>[0]["data"]["structured"],
-        htmlDigest: digest,
-      },
-    });
-
     return NextResponse.json({
-      data: { digest, structured: results, cached: false, createdAt: saved.createdAt, id: saved.id },
+      data: {
+        digest: result.html,
+        structured: result.structured,
+        cached: false,
+        createdAt: result.createdAt,
+        id: result.id,
+      },
     });
   } catch (error) {
     console.error("Daily digest error:", error);

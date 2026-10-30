@@ -64,8 +64,9 @@ function formatTime(iso: string): string {
 }
 
 function formatDateLabel(dateStr: string): string {
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  // Local calendar dates (en-CA renders YYYY-MM-DD); toISOString would be UTC.
+  const today = new Date().toLocaleDateString("en-CA");
+  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
   if (dateStr === today) return "Today";
   if (dateStr === yesterday) return "Yesterday";
   try {
@@ -157,7 +158,7 @@ export default function BriefingPage() {
   async function loadCachedDigest() {
     setInitialLoading(true);
     try {
-      const res = await fetch("/api/ai/daily-digest?date=" + new Date().toISOString().slice(0, 10));
+      const res = await fetch("/api/ai/daily-digest");
       const data = await res.json();
       if (res.ok && data.data?.length > 0) {
         const latest = data.data[0];
@@ -224,7 +225,7 @@ export default function BriefingPage() {
 
     const placeholder: DigestHistoryItem = {
       id: generatingPlaceholderId,
-      date: new Date().toISOString().slice(0, 10),
+      date: new Date().toLocaleDateString("en-CA"),
       hours,
       source: "web",
       createdAt: new Date().toISOString(),

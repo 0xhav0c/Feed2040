@@ -2,34 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildAndSendDigest } from "@/lib/telegram/digest-builder";
 import { verifyCronAuth } from "@/lib/cron-auth";
+import { latestDueSlot, recordFailedAttempt, shouldAttempt } from "@/lib/schedule";
+import { resolveTimezone } from "@/lib/timezone";
 
-function getLocalTimeString(date: Date, timezone: string): string {
-  try {
-    const str = date.toLocaleString("en-CA", {
-      timeZone: timezone,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    return str;
-  } catch {
-    const h = date.getUTCHours().toString().padStart(2, "0");
-    const m = date.getUTCMinutes().toString().padStart(2, "0");
-    return `${h}:${m}`;
-  }
-}
-
-function isWithinMinute(a: string, b: string): boolean {
-  const [ah, am] = a.split(":").map(Number);
-  const [bh, bm] = b.split(":").map(Number);
-  const diff = Math.abs((ah * 60 + am) - (bh * 60 + bm));
-  // Handle midnight wraparound (e.g. 23:59 vs 00:00 is 1 minute apart, not 1439)
-  return diff <= 1 || diff >= 1440 - 1;
-}
-
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
-}
+const inProgressUsers = new Set<string>();
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!verifyCronAuth(req)) {
@@ -50,38 +26,52 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     for (const ts of users) {
       if (!ts.scheduleTimes?.length) continue;
+      if (inProgressUsers.has(ts.userId)) continue;
 
-      const currentTimeStr = getLocalTimeString(
-        now,
-        ts.timezone || "Europe/Istanbul"
-      );
-      const matches = ts.scheduleTimes.some((t: string) =>
-        isWithinMinute(currentTimeStr, t)
-      );
+      const tz = resolveTimezone(ts.timezone);
+      const due = latestDueSlot(ts.scheduleTimes, tz, now);
+      // lastDigestSentDate holds the last delivered slot ("YYYY-MM-DD HH:MM"),
+      // so every configured time fires once per day, late runs catch up once,
+      // and the 60s cron ticks never double-send.
+      if (!due || ts.lastDigestSentDate === due.key) continue;
 
-      if (!matches) continue;
+      const attemptKey = `tg:${ts.userId}:${due.key}`;
+      if (!shouldAttempt(attemptKey)) continue;
 
-      // Idempotency: the cron worker calls this every 60s and the match window
-      // spans ~2 minutes, so a slot would otherwise fire 2-3 times. Skip if a
-      // Telegram digest was already sent today for this user.
-      const date = todayKey();
-      if (ts.lastDigestSentDate === date) continue;
-
-      const language = ts.user.aiSettings?.language || "en";
-      const ok = await buildAndSendDigest({
-        userId: ts.userId,
-        chatId: ts.chatId,
-        language,
-      });
-
-      if (ok) {
-        sent++;
+      inProgressUsers.add(ts.userId);
+      try {
+        // Claim the slot before the (slow, multi-message) send so an
+        // overlapping tick can't start a second delivery.
         await prisma.telegramSettings.update({
           where: { id: ts.id },
-          data: { lastDigestSentDate: date },
+          data: { lastDigestSentDate: due.key },
         });
-      } else {
+
+        const result = await buildAndSendDigest({
+          userId: ts.userId,
+          chatId: ts.chatId,
+          language: ts.user.aiSettings?.language || "en",
+        });
+
+        if (result === "sent") {
+          sent++;
+        } else {
+          failed++;
+          recordFailedAttempt(attemptKey, result === "no-articles");
+          // Release the claim so the spaced retry can deliver it.
+          if (result !== "no-articles") {
+            await prisma.telegramSettings.update({
+              where: { id: ts.id },
+              data: { lastDigestSentDate: ts.lastDigestSentDate },
+            });
+          }
+        }
+      } catch (err) {
         failed++;
+        recordFailedAttempt(attemptKey);
+        console.error(`[Cron] Telegram digest failed for user ${ts.userId}:`, err);
+      } finally {
+        inProgressUsers.delete(ts.userId);
       }
     }
 

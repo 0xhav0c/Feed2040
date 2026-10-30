@@ -12,6 +12,7 @@ if (!cronSecret || cronSecret.length < 16) {
 const TELEGRAM_API = "https://api.telegram.org/bot";
 const STARTUP_DELAY_MS = 20000;
 const RETRY_DELAY_MS = 30000;
+const TOKEN_RECHECK_MS = 60000;
 
 let running = true;
 
@@ -19,14 +20,17 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchBotToken() {
+// Returns the list of bot tokens to poll, or null when the app couldn't be
+// asked (so the current pollers are left alone rather than torn down).
+async function fetchBotTokens() {
   try {
     const res = await fetch(`${baseUrl}/api/internal/telegram-token`, {
       headers: { Authorization: `Bearer ${cronSecret}` },
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.token || null;
+    if (Array.isArray(data.tokens)) return data.tokens.filter(Boolean);
+    return data.token ? [data.token] : [];
   } catch {
     return null;
   }
@@ -47,7 +51,7 @@ async function forwardToWebhook(update) {
   }
 }
 
-async function pollLoop(token) {
+async function pollLoop(token, state) {
   // Clear any existing webhook so polling works
   try {
     await fetch(`${TELEGRAM_API}${token}/deleteWebhook`);
@@ -56,9 +60,9 @@ async function pollLoop(token) {
   }
 
   let offset = 0;
-  console.log("[Telegram] Polling started");
+  console.log(`[Telegram] Polling started (bot …${token.slice(-4)})`);
 
-  while (running) {
+  while (running && !state.stopped) {
     try {
       const url = `${TELEGRAM_API}${token}/getUpdates?offset=${offset}&timeout=25&allowed_updates=["message"]`;
       const controller = new AbortController();
@@ -91,21 +95,41 @@ async function pollLoop(token) {
   }
 }
 
+// One long-polling loop per bot token; the set is re-read periodically so a
+// token added, changed or removed in Settings takes effect without a restart.
+const pollers = new Map();
+
+function startPoller(token) {
+  const state = { stopped: false };
+  pollers.set(token, state);
+  (async () => {
+    while (running && !state.stopped) {
+      await pollLoop(token, state);
+      // pollLoop returns on an invalid token or when stopped; retry later.
+      if (!state.stopped) await sleep(RETRY_DELAY_MS);
+    }
+  })().catch((err) => console.error("[Telegram] Poller crashed:", err.message));
+}
+
 async function main() {
   console.log("[Telegram] Bot poller starting, waiting for app...");
   await sleep(STARTUP_DELAY_MS);
 
   while (running) {
-    const token = await fetchBotToken();
-
-    if (!token) {
-      await sleep(RETRY_DELAY_MS);
-      continue;
+    const tokens = await fetchBotTokens();
+    if (tokens) {
+      for (const token of tokens) {
+        if (!pollers.has(token)) startPoller(token);
+      }
+      for (const [token, state] of pollers) {
+        if (!tokens.includes(token)) {
+          state.stopped = true;
+          pollers.delete(token);
+          console.log(`[Telegram] Stopped polling bot …${token.slice(-4)}`);
+        }
+      }
     }
-
-    await pollLoop(token);
-    // If pollLoop exits (invalid token etc.), retry after delay
-    await sleep(RETRY_DELAY_MS);
+    await sleep(TOKEN_RECHECK_MS);
   }
 }
 
