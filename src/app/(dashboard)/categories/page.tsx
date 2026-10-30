@@ -140,17 +140,12 @@ export default function CategoriesPage() {
   async function handleCreate() {
     if (!name.trim()) return;
     setCreating(true);
-    const slug = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/gi, "-")
-      .replace(/^-|-$/g, "");
     try {
       const res = await fetch("/api/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          slug,
           icon,
           color,
           parentId: parentIdForNew,

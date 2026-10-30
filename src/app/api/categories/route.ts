@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { cacheDel } from "@/lib/redis";
+import { checkParent, uniqueSlug } from "@/lib/categories";
 
 const createCategorySchema = z.object({
   name: z.string().min(1),
-  slug: z.string().min(1),
+  slug: z.string().optional(), // ignored; derived from the name server-side
   icon: z.string().optional(),
   color: z.string().optional(),
   parentId: z.string().nullable().optional(),
@@ -75,15 +77,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   try {
     const body = await req.json();
-    const { name, slug, icon, color, parentId } = createCategorySchema.parse(body);
+    const parsedBody = createCategorySchema.parse(body);
+    const { icon, color, parentId } = parsedBody;
+    const name = parsedBody.name.trim();
+    if (!name) {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+    }
 
-    const existing = await prisma.category.findUnique({
-      where: { slug_userId: { slug, userId: session.user.id } },
+    // Duplicate = same name. Slugs are derived server-side and made unique,
+    // so "C++"/"C#" or non-Latin names no longer collide or come out empty.
+    const existing = await prisma.category.findFirst({
+      where: { userId: session.user.id, name: { equals: name, mode: "insensitive" } },
+      select: { id: true },
     });
 
     if (existing) {
       return NextResponse.json({ error: "Category already exists" }, { status: 409 });
     }
+
+    const parentError = await checkParent(session.user.id, null, parentId);
+    if (parentError) {
+      return NextResponse.json({ error: parentError }, { status: 400 });
+    }
+    const slug = await uniqueSlug(session.user.id, name);
 
     const count = await prisma.category.count({
       where: {
@@ -104,6 +120,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
     });
 
+    await cacheDel(`sidebar:${session.user.id}`);
     return NextResponse.json({ data: category }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -134,6 +151,7 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
       )
     );
 
+    await cacheDel(`sidebar:${userId}`);
     return NextResponse.json({ data: { reordered: true } });
   } catch (error) {
     if (error instanceof z.ZodError) {

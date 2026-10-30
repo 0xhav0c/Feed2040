@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { cacheDel } from "@/lib/redis";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -101,6 +102,7 @@ export async function PATCH(
       ? await prisma.feed.update({ where: { id }, data: updateData })
       : await prisma.feed.findUniqueOrThrow({ where: { id } });
 
+    await cacheDel(`sidebar:${session.user.id}`);
     return NextResponse.json({ data: updated });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -130,6 +132,7 @@ export async function DELETE(
     }
 
     await prisma.feed.delete({ where: { id } });
+    await cacheDel(`sidebar:${session.user.id}`);
     return NextResponse.json({ data: { deleted: true } });
   } catch (error) {
     console.error("Failed to delete feed:", error);

@@ -431,17 +431,12 @@ export default function AddFeedPage() {
     setCreatingCategory(true);
 
     try {
-      const slug = newCategoryName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/gi, "-")
-        .replace(/^-|-$/g, "");
 
       const res = await fetch("/api/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newCategoryName,
-          slug,
           icon: "📁",
           color: "#3b82f6",
         }),

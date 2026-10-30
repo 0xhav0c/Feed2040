@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { cacheDel } from "@/lib/redis";
+import { checkParent } from "@/lib/categories";
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -42,7 +44,13 @@ export async function PATCH(
     if (parsed.name !== undefined) updateData.name = parsed.name;
     if (parsed.icon !== undefined) updateData.icon = parsed.icon;
     if (parsed.color !== undefined) updateData.color = parsed.color;
-    if (parsed.parentId !== undefined) updateData.parentId = parsed.parentId;
+    if (parsed.parentId !== undefined) {
+      const parentError = await checkParent(session.user.id, id, parsed.parentId);
+      if (parentError) {
+        return NextResponse.json({ error: parentError }, { status: 400 });
+      }
+      updateData.parentId = parsed.parentId;
+    }
 
     if (parsed.feedIds !== undefined) {
       const validFeedIds = parsed.feedIds.filter((fid) => fid);
@@ -72,6 +80,7 @@ export async function PATCH(
           })
         : await prisma.category.findUniqueOrThrow({ where: { id } });
 
+    await cacheDel(`sidebar:${session.user.id}`);
     return NextResponse.json({ data: updated });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -102,6 +111,7 @@ export async function DELETE(
     }
 
     await prisma.category.delete({ where: { id } });
+    await cacheDel(`sidebar:${session.user.id}`);
     return NextResponse.json({ data: { deleted: true } });
   } catch (error) {
     console.error("Failed to delete category:", error);
