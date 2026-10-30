@@ -158,7 +158,20 @@ export default function AddFeedPage() {
     try {
       const res = await fetch("/api/categories");
       const data = await res.json();
-      if (res.ok) setCategories(data.data);
+      // /api/categories returns a tree; flatten it so subcategories can be
+      // picked too.
+      if (res.ok) {
+        type Node = (typeof categories)[number] & { children?: Node[] };
+        const flat: Node[] = [];
+        const walk = (nodes: Node[]) => {
+          for (const n of nodes) {
+            flat.push(n);
+            if (Array.isArray(n.children)) walk(n.children);
+          }
+        };
+        walk(data.data as Node[]);
+        setCategories(flat);
+      }
     } catch {
       // silent
     }

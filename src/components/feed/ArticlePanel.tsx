@@ -139,6 +139,7 @@ function ImageZoomModal({
 
   return (
     <div
+      data-modal="true"
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md"
       onClick={onClose}
     >
@@ -232,6 +233,12 @@ export const ArticlePanel = memo(function ArticlePanel({
     { id: string; title: string; url: string; feedTitle: string; publishedAt: string | null }[]
   >([]);
   const ttsRateRef = useRef(1);
+  // Id of the article currently shown; async handlers compare against it so a
+  // slow response for a previous article (after j/k) is dropped, not shown.
+  const currentIdRef = useRef<string | undefined>(article?.id);
+  useEffect(() => {
+    currentIdRef.current = article?.id;
+  }, [article?.id]);
   const langPickerRef = useRef<HTMLDivElement>(null);
   const shareMenuRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -281,7 +288,11 @@ export const ArticlePanel = memo(function ArticlePanel({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ articleId: currentId }),
-    }).catch(() => {});
+    })
+      .then((res) => {
+        if (res.ok) window.dispatchEvent(new Event("feed:read-changed"));
+      })
+      .catch(() => {});
 
     if (ownContent) setFullContent(ownContent);
     else setLoadingContent(true);
@@ -358,14 +369,16 @@ export const ArticlePanel = memo(function ArticlePanel({
 
   const handleAiSummarize = useCallback(async () => {
     if (!article) return;
+    const id = article.id;
     setLoadingAiSummary(true);
     try {
       const res = await fetch("/api/ai/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ articleId: article.id }),
+        body: JSON.stringify({ articleId: id }),
       });
       const data = await res.json();
+      if (currentIdRef.current !== id) return;
       if (res.ok && data.data?.summary) {
         setAiSummary(data.data.summary);
       }
@@ -382,13 +395,15 @@ export const ArticlePanel = memo(function ArticlePanel({
       const n = name.trim();
       if (!n) return;
       setTagInput("");
+      const id = article.id;
       try {
         const res = await fetch("/api/articles/tag", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ articleId: article.id, action: "add", tagName: n }),
+          body: JSON.stringify({ articleId: id, action: "add", tagName: n }),
         });
         const data = await res.json();
+        if (currentIdRef.current !== id) return;
         if (res.ok) setTags(data.data.tags);
         else toast.error(data.error || "Failed to add tag");
       } catch {
@@ -401,13 +416,15 @@ export const ArticlePanel = memo(function ArticlePanel({
   const removeTag = useCallback(
     async (tagId: string) => {
       if (!article) return;
+      const id = article.id;
       try {
         const res = await fetch("/api/articles/tag", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ articleId: article.id, action: "remove", tagId }),
+          body: JSON.stringify({ articleId: id, action: "remove", tagId }),
         });
         const data = await res.json();
+        if (currentIdRef.current !== id) return;
         if (res.ok) setTags(data.data.tags);
       } catch {
         /* silent */
@@ -419,15 +436,20 @@ export const ArticlePanel = memo(function ArticlePanel({
   const handleSuggestTags = useCallback(async () => {
     if (!article || suggestingTags) return;
     setSuggestingTags(true);
+    const id = article.id;
     try {
       const res = await fetch("/api/ai/suggest-tags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ articleId: article.id }),
+        body: JSON.stringify({ articleId: id }),
       });
       const data = await res.json();
+      if (currentIdRef.current !== id) return;
       if (res.ok && Array.isArray(data.data?.tags)) {
-        for (const t of data.data.tags) await addTag(t);
+        for (const t of data.data.tags) {
+          if (currentIdRef.current !== id) break;
+          await addTag(t);
+        }
       } else if (!res.ok) {
         toast.error(data.error || "Failed to suggest tags");
       }
@@ -443,13 +465,15 @@ export const ArticlePanel = memo(function ArticlePanel({
       if (!q) return;
       setAskInput("");
       setAskLoading(true);
+      const id = article.id;
       try {
         const res = await fetch("/api/ai/ask", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ articleId: article.id, question: q }),
+          body: JSON.stringify({ articleId: id, question: q }),
         });
         const data = await res.json();
+        if (currentIdRef.current !== id) return;
         if (res.ok && data.data?.answer) {
           setAskThread((prev) => [...prev, { q, a: data.data.answer }]);
         } else {
@@ -469,6 +493,7 @@ export const ArticlePanel = memo(function ArticlePanel({
     if (!content || !article) return;
     setTranslating(true);
     setShowLangPicker(false);
+    const id = article.id;
     try {
       const res = await fetch("/api/translate", {
         method: "POST",
@@ -476,6 +501,7 @@ export const ArticlePanel = memo(function ArticlePanel({
         body: JSON.stringify({ html: content, targetLang: translateLang }),
       });
       const data = await res.json();
+      if (currentIdRef.current !== id) return;
       if (res.ok && data.data?.translatedHtml) {
         setTranslatedContent(data.data.translatedHtml);
         toast.success("Article translated");
@@ -626,28 +652,42 @@ export const ArticlePanel = memo(function ArticlePanel({
   }, [article, selectionBox, savingHighlight]);
 
   const deleteHighlight = useCallback(async (id: string) => {
+    const index = highlights.findIndex((h) => h.id === id);
+    const removed = highlights[index];
     setHighlights((prev) => prev.filter((h) => h.id !== id));
     try {
-      await fetch(`/api/highlights/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/highlights/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
     } catch {
-      /* silent; list already updated optimistically */
+      // Put it back where it was so the list matches the server.
+      if (removed) {
+        setHighlights((prev) => {
+          const next = [...prev];
+          next.splice(Math.min(index, next.length), 0, removed);
+          return next;
+        });
+      }
+      toast.error("Failed to delete highlight");
     }
-  }, []);
+  }, [highlights]);
 
   const saveNote = useCallback(async (id: string) => {
     const note = noteDraft.trim();
+    const previous = highlights.find((h) => h.id === id)?.note ?? null;
     setNoteEditId(null);
     setHighlights((prev) => prev.map((h) => (h.id === id ? { ...h, note: note || null } : h)));
     try {
-      await fetch(`/api/highlights/${id}`, {
+      const res = await fetch(`/api/highlights/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: note || null }),
       });
+      if (!res.ok) throw new Error("save failed");
     } catch {
+      setHighlights((prev) => prev.map((h) => (h.id === id ? { ...h, note: previous } : h)));
       toast.error("Failed to save note");
     }
-  }, [noteDraft]);
+  }, [noteDraft, highlights]);
 
   const copyHighlights = useCallback(async () => {
     if (!article || highlights.length === 0) return;

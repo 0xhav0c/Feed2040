@@ -17,6 +17,8 @@ type Props = {
   viewMode: ViewMode;
   onSelect?: (article: ArticleWithFeed) => void;
   isSelected?: boolean;
+  /** When given, the parent owns bookmark state and performs the update. */
+  onBookmarkToggle?: (articleId: string) => void;
 };
 
 function useTimeAgo(date: Date | null): string | null {
@@ -34,6 +36,7 @@ export const FeedArticleCard = memo(function FeedArticleCard({
   viewMode,
   onSelect,
   isSelected = false,
+  onBookmarkToggle,
 }: Props) {
   const timeAgo = useTimeAgo(article.publishedAt);
   const [bookmarked, setBookmarked] = useState(article.isBookmarked);
@@ -48,19 +51,24 @@ export const FeedArticleCard = memo(function FeedArticleCard({
   const handleBookmark = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
+      if (onBookmarkToggle) {
+        onBookmarkToggle(article.id);
+        return;
+      }
       const prev = bookmarked;
       setBookmarked(!prev);
       try {
-        await fetch("/api/articles/bookmark", {
+        const res = await fetch("/api/articles/bookmark", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ articleId: article.id }),
+          body: JSON.stringify({ articleId: article.id, bookmarked: !prev }),
         });
+        if (!res.ok) setBookmarked(prev);
       } catch {
         setBookmarked(prev);
       }
     },
-    [article.id, bookmarked]
+    [article.id, bookmarked, onBookmarkToggle]
   );
 
   const handleClick = useCallback(() => {

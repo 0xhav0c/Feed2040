@@ -9,11 +9,24 @@ export function useKeyboardShortcuts(shortcuts: ShortcutMap) {
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
-        e.target instanceof HTMLSelectElement
+        e.target instanceof HTMLSelectElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
       ) {
         if (e.key === "Escape") {
           (e.target as HTMLElement).blur();
         }
+        return;
+      }
+      // Leave browser/OS shortcuts alone (Ctrl/Cmd+R must reload, not refresh
+      // feeds; Ctrl+P must print, …).
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // While a dialog is open its own keys win: Escape closes the dialog
+      // (not the article behind it) and Shift+A can't mark everything read.
+      if (
+        document.querySelector(
+          '[data-modal="true"], [data-slot="dialog-content"], [data-slot="sheet-content"]'
+        )
+      ) {
         return;
       }
       // For Shift+letter combos, use uppercase key (e.g. "A" for Shift+A)

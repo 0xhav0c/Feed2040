@@ -13,6 +13,11 @@ export interface ArticleScope {
   filter?: string;
   /** IANA timezone used to compute "today"; defaults to DEFAULT_TIMEZONE. */
   tz?: string | null;
+  /**
+   * For the Unread filter: articles read at/after this instant still count as
+   * unread, keeping the result set stable while the user reads through it.
+   */
+  readSince?: Date | null;
 }
 
 /**
@@ -56,7 +61,18 @@ export function buildArticleWhere(
 
   if (applyFilter) {
     if (scope.filter === "unread") {
-      where.readArticles = { none: { userId } };
+      if (scope.readSince) {
+        where.AND = [
+          {
+            OR: [
+              { readArticles: { none: { userId } } },
+              { readArticles: { some: { userId, readAt: { gte: scope.readSince } } } },
+            ],
+          },
+        ];
+      } else {
+        where.readArticles = { none: { userId } };
+      }
     } else if (scope.filter === "today") {
       where.publishedAt = todayRange(scope.tz);
     }

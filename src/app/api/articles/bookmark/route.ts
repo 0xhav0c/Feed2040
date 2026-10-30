@@ -9,7 +9,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const { articleId } = await req.json();
+    const { articleId, bookmarked } = await req.json();
     if (!articleId) {
       return NextResponse.json({ error: "articleId is required" }, { status: 400 });
     }
@@ -19,6 +19,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
     if (!article) {
       return NextResponse.json({ error: "Article not found" }, { status: 404 });
+    }
+
+    // Explicit form: set the desired state (idempotent), so a client whose
+    // view is stale can't flip the bookmark the wrong way.
+    if (typeof bookmarked === "boolean") {
+      if (bookmarked) {
+        await prisma.bookmark.upsert({
+          where: { userId_articleId: { userId: session.user.id, articleId } },
+          create: { userId: session.user.id, articleId },
+          update: {},
+        });
+      } else {
+        await prisma.bookmark.deleteMany({ where: { userId: session.user.id, articleId } });
+      }
+      return NextResponse.json({ data: { bookmarked } });
     }
 
     const existing = await prisma.bookmark.findUnique({

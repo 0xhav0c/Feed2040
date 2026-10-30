@@ -135,7 +135,7 @@ export function DigestModal({ open, onClose }: DigestModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center">
+    <div data-modal="true" className="fixed inset-0 z-50 flex items-start justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative z-10 mt-6 mb-6 flex max-h-[92vh] w-full max-w-5xl flex-col rounded-2xl border border-border bg-background shadow-2xl mx-4">

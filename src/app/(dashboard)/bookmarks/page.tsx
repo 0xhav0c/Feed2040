@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Bookmark, Loader2, Search, X } from "lucide-react";
 import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import type { ViewMode, ArticleWithFeed } from "@/types";
+import { isSafeUrl } from "@/lib/utils/url-validator";
+import { toast } from "sonner";
 
 const PAGE_SIZE = 30;
 
@@ -65,28 +67,28 @@ export default function BookmarksPage() {
   const handleBookmarkToggle = useCallback(
     async (articleId: string) => {
       const wasBookmarked = bookmarkedIds.has(articleId);
-      setBookmarkedIds((prev) => {
-        const next = new Set(prev);
-        if (wasBookmarked) next.delete(articleId);
-        else next.add(articleId);
-        return next;
-      });
-      setAllArticles((prev) =>
-        prev.map((a) => (a.id === articleId ? { ...a, isBookmarked: !wasBookmarked } : a))
-      );
-      try {
-        await fetch("/api/articles/bookmark", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ articleId }),
-        });
-      } catch {
+      const apply = (value: boolean) => {
         setBookmarkedIds((prev) => {
           const next = new Set(prev);
-          if (wasBookmarked) next.add(articleId);
+          if (value) next.add(articleId);
           else next.delete(articleId);
           return next;
         });
+        setAllArticles((prev) =>
+          prev.map((a) => (a.id === articleId ? { ...a, isBookmarked: value } : a))
+        );
+      };
+      apply(!wasBookmarked);
+      try {
+        const res = await fetch("/api/articles/bookmark", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ articleId, bookmarked: !wasBookmarked }),
+        });
+        if (!res.ok) throw new Error("bookmark failed");
+      } catch {
+        apply(wasBookmarked);
+        toast.error("Failed to update bookmark");
       }
     },
     [bookmarkedIds]
@@ -115,7 +117,9 @@ export default function BookmarksPage() {
         handleSelectArticle(paginatedArticles[prev]);
       },
       o: () => {
-        if (selectedArticle?.url) window.open(selectedArticle.url, "_blank");
+        if (selectedArticle?.url && isSafeUrl(selectedArticle.url)) {
+          window.open(selectedArticle.url, "_blank", "noopener,noreferrer");
+        }
       },
       b: () => {
         if (selectedArticle) handleBookmarkToggle(selectedArticle.id);
@@ -191,6 +195,7 @@ export default function BookmarksPage() {
               articles={paginatedArticles}
               onSelectArticle={handleSelectArticle}
               selectedArticleId={selectedArticle?.id}
+              onBookmarkToggle={handleBookmarkToggle}
             />
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-4 border-t border-border px-4 py-3">

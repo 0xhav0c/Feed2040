@@ -24,6 +24,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       search: searchParams.get("q")?.trim() || "",
       filter: searchParams.get("filter") || "",
       tz: searchParams.get("tz"),
+      readSince: parseDate(searchParams.get("readSince")),
     };
 
     const where = buildArticleWhere(userId, scope);
@@ -102,4 +103,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       { status: 500 }
     );
   }
+}
+
+function parseDate(value: string | null): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? null : d;
 }

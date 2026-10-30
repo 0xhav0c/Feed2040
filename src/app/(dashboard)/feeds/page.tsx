@@ -24,6 +24,7 @@ import {
   Brain,
 } from "lucide-react";
 import { toast } from "sonner";
+import { isSafeUrl } from "@/lib/utils/url-validator";
 import { DigestModal } from "@/components/feed/DigestModal";
 import type { ArticleWithFeed } from "@/types";
 import { Input } from "@/components/ui/input";
@@ -90,6 +91,12 @@ function FeedsContent() {
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>(null);
 
   const [page, setPage] = useState(1);
+  // Bumped to re-run the fetch effect with the *current* view (calling a
+  // captured fetchArticles after an await could load a view the user left).
+  const [reloadKey, setReloadKey] = useState(0);
+  // Articles read after this instant still count as "unread" for the Unread
+  // view, so reading items on page 1 doesn't shift later pages and skip rows.
+  const [unreadSince, setUnreadSince] = useState(() => new Date().toISOString());
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [filterTitle, setFilterTitle] = useState("");
@@ -117,20 +124,23 @@ function FeedsContent() {
   // guarding against out-of-order responses when navigating/filtering quickly.
   const requestIdRef = useRef(0);
 
-  const bookmarkedIds = useMemo(() => {
-    const ids = new Set<string>();
-    articles.forEach((a) => {
-      if (a.isBookmarked) ids.add(a.id);
-    });
-    return ids;
-  }, [articles]);
-
   // Mirror of `articles` for stable callbacks that need the current list
   // without depending on it (which would re-register global listeners).
   const articlesRef = useRef(articles);
   useEffect(() => {
     articlesRef.current = articles;
   }, [articles]);
+  const unreadSinceRef = useRef(unreadSince);
+  useEffect(() => {
+    unreadSinceRef.current = unreadSince;
+  }, [unreadSince]);
+
+  // Re-fetch the current view from page 1 (after refresh/save/mark-all).
+  const reload = useCallback(() => {
+    setPage(1);
+    setUnreadSince(new Date().toISOString());
+    setReloadKey((k) => k + 1);
+  }, []);
 
   const fetchArticles = useCallback(
     async (p: number, q: string, filter: "" | "today" | "unread" = "") => {
@@ -166,6 +176,7 @@ function FeedsContent() {
         if (tagId) params.set("tagId", tagId);
         if (saved) params.set("saved", "1");
         if (filter) params.set("filter", filter);
+        if (filter === "unread") params.set("readSince", unreadSinceRef.current);
         params.set("tz", Intl.DateTimeFormat().resolvedOptions().timeZone);
 
         const res = await fetch(`/api/articles?${params}`);
@@ -201,7 +212,12 @@ function FeedsContent() {
   // Reset view when nav params change; seed the search box from the URL's ?q=
   // so saved-search links apply their query automatically.
   useEffect(() => {
+    // A pending debounced search from the previous view must not apply here.
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
     setPage(1);
+    setUnreadSince(new Date().toISOString());
+    setSelectedArticle(null);
+    setMobileShowArticle(false);
     setSearchQuery(urlQuery);
     setSearchInput(urlQuery);
     // Seed the filter from the URL too, so saved-search links that carry a
@@ -209,12 +225,21 @@ function FeedsContent() {
     setActiveFilter(urlFilter === "today" || urlFilter === "unread" ? urlFilter : "");
   }, [feedId, categoryId, tagId, saved, urlQuery, urlFilter]);
 
+  // Only the Unread view depends on the snapshot instant.
+  const unreadKey = activeFilter === "unread" ? unreadSince : "";
+
   // Single source of fetching. The out-of-order guard in fetchArticles ensures
   // that when navigation triggers both a feedId change and a page reset, the
   // most recent request wins regardless of resolution order.
   useEffect(() => {
     fetchArticles(page, searchQuery, activeFilter);
-  }, [feedId, categoryId, tagId, saved, page, searchQuery, activeFilter, semanticMode, fetchArticles]);
+  }, [feedId, categoryId, tagId, saved, page, searchQuery, activeFilter, semanticMode, fetchArticles, reloadKey, unreadKey]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!feedId && !categoryId && !tagId) {
@@ -234,12 +259,24 @@ function FeedsContent() {
         })
         .catch(() => {});
     } else if (categoryId) {
+      if (categoryId === "uncategorized") {
+        setFilterTitle("Uncategorized");
+        return;
+      }
       fetch("/api/categories")
         .then((r) => r.json())
         .then((d) => {
-          const c = d.data?.find(
-            (x: { id: string; name: string }) => x.id === categoryId
-          );
+          // The categories API returns a tree; search subcategories too.
+          type Node = { id: string; name: string; children?: Node[] };
+          const find = (nodes: Node[] = []): Node | undefined => {
+            for (const n of nodes) {
+              if (n.id === categoryId) return n;
+              const hit = find(n.children);
+              if (hit) return hit;
+            }
+            return undefined;
+          };
+          const c = find(d.data);
           if (c) setFilterTitle(c.name);
         })
         .catch(() => {});
@@ -274,6 +311,7 @@ function FeedsContent() {
   const toggleFilter = useCallback((f: "today" | "unread") => {
     setActiveFilter((prev) => (prev === f ? "" : f));
     setPage(1);
+    setUnreadSince(new Date().toISOString());
   }, []);
 
   const handleMarkAllRead = useCallback(async () => {
@@ -310,8 +348,7 @@ function FeedsContent() {
       if (res.ok) {
         toast.success(`Marked ${data.data.marked ?? 0} articles as read`);
         setArticles((prev) => prev.map((a) => ({ ...a, isRead: true })));
-        setUnreadCount(0);
-        fetchArticles(page, searchQuery, activeFilter);
+        reload();
         // Tell the sidebar to refresh its per-category unread counts now.
         window.dispatchEvent(new Event("feed:read-changed"));
       } else {
@@ -322,7 +359,7 @@ function FeedsContent() {
     } finally {
       setMarkingAllRead(false);
     }
-  }, [feedId, categoryId, tagId, saved, semanticMode, activeFilter, fetchArticles, page, searchQuery]);
+  }, [feedId, categoryId, tagId, saved, semanticMode, activeFilter, reload, searchQuery]);
 
   const [refreshProgress, setRefreshProgress] = useState<{
     current: number;
@@ -345,7 +382,7 @@ function FeedsContent() {
         else toast.error("Refresh failed");
         setRefreshing(false);
         setRefreshProgress(null);
-        fetchArticles(1, searchQuery, activeFilter);
+        reload();
         return;
       }
 
@@ -376,8 +413,7 @@ function FeedsContent() {
               });
             } else if (evt.type === "complete") {
               toast.success(`Refreshed: ${evt.newArticles} new articles from ${evt.updated} feeds`);
-              setPage(1);
-              fetchArticles(1, searchQuery, activeFilter);
+              reload();
             }
           } catch { /* skip malformed */ }
         }
@@ -388,7 +424,7 @@ function FeedsContent() {
       setRefreshing(false);
       setTimeout(() => setRefreshProgress(null), 2000);
     }
-  }, [fetchArticles, searchQuery, activeFilter]);
+  }, [reload]);
 
   const [saveInput, setSaveInput] = useState("");
   const [savingUrl, setSavingUrl] = useState(false);
@@ -409,8 +445,7 @@ function FeedsContent() {
           if (data.data?.duplicate) toast.info("Already saved");
           else toast.success("Saved for later");
           setSaveInput("");
-          fetchArticles(1, "", "");
-          setPage(1);
+          reload();
           return true;
         }
         toast.error(data.error || "Failed to save");
@@ -422,7 +457,7 @@ function FeedsContent() {
         setSavingUrl(false);
       }
     },
-    [savingUrl, fetchArticles]
+    [savingUrl, reload]
   );
 
   // Bookmarklet target: /feeds?saved=1&saveUrl=<encoded>. Auto-save once, then
@@ -475,30 +510,42 @@ function FeedsContent() {
     }
   }, [saveSearchName, searchQuery, savingSearch, feedId, categoryId, activeFilter, saveSearchNotify]);
 
+  const selectedArticleRef = useRef(selectedArticle);
+  useEffect(() => {
+    selectedArticleRef.current = selectedArticle;
+  }, [selectedArticle]);
+
   const handleBookmarkToggle = useCallback(async (articleId: string) => {
-    setArticles((prev) =>
-      prev.map((a) =>
-        a.id === articleId ? { ...a, isBookmarked: !a.isBookmarked } : a
-      )
-    );
+    // The open article may no longer be in the list (e.g. after paging), so
+    // fall back to its own state rather than assuming "not bookmarked".
+    const current =
+      articlesRef.current.find((a) => a.id === articleId)?.isBookmarked ??
+      (selectedArticleRef.current?.id === articleId ? selectedArticleRef.current.isBookmarked : false);
+    const apply = (value: boolean) => {
+      setArticles((prev) => prev.map((a) => (a.id === articleId ? { ...a, isBookmarked: value } : a)));
+      setSelectedArticle((prev) => (prev?.id === articleId ? { ...prev, isBookmarked: value } : prev));
+    };
+    apply(!current);
     try {
-      await fetch("/api/articles/bookmark", {
+      const res = await fetch("/api/articles/bookmark", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ articleId }),
+        body: JSON.stringify({ articleId, bookmarked: !current }),
       });
+      if (!res.ok) throw new Error("bookmark failed");
     } catch {
-      setArticles((prev) =>
-        prev.map((a) =>
-          a.id === articleId ? { ...a, isBookmarked: !a.isBookmarked } : a
-        )
-      );
+      apply(current);
+      toast.error("Failed to update bookmark");
     }
   }, []);
 
   const handleSelectArticle = useCallback((article: ArticleWithFeed) => {
     setSelectedArticle(article);
     setMobileShowArticle(true);
+    // ArticlePanel marks it read on the server; mirror that in the counters.
+    if (!articlesRef.current.find((a) => a.id === article.id)?.isRead) {
+      setUnreadCount((c) => Math.max(0, c - 1));
+    }
     setArticles((prev) =>
       prev.map((a) => (a.id === article.id ? { ...a, isRead: true } : a))
     );
@@ -512,25 +559,21 @@ function FeedsContent() {
       setArticles((prev) =>
         prev.map((a) => (a.id === articleId ? { ...a, isRead: !wasRead } : a))
       );
+      setUnreadCount((c) => Math.max(0, c + (wasRead ? 1 : -1)));
       try {
-        if (wasRead) {
-          await fetch("/api/articles/read", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ articleId }),
-          });
-        } else {
-          await fetch("/api/articles/read", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ articleId }),
-          });
-        }
+        const res = await fetch("/api/articles/read", {
+          method: wasRead ? "DELETE" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ articleId }),
+        });
+        if (!res.ok) throw new Error("read toggle failed");
         window.dispatchEvent(new Event("feed:read-changed"));
       } catch {
         setArticles((prev) =>
           prev.map((a) => (a.id === articleId ? { ...a, isRead: wasRead } : a))
         );
+        setUnreadCount((c) => Math.max(0, c + (wasRead ? -1 : 1)));
+        toast.error("Failed to update read state");
       }
     },
     []
@@ -554,7 +597,9 @@ function FeedsContent() {
         handleSelectArticle(articles[prev]);
       },
       o: () => {
-        if (selectedArticle?.url) window.open(selectedArticle.url, "_blank");
+        if (selectedArticle?.url && isSafeUrl(selectedArticle.url)) {
+          window.open(selectedArticle.url, "_blank", "noopener,noreferrer");
+        }
       },
       b: () => {
         if (selectedArticle) handleBookmarkToggle(selectedArticle.id);
@@ -608,6 +653,8 @@ function FeedsContent() {
     ? filterTitle || "Feed"
     : categoryId
     ? filterTitle || "Category"
+    : tagId
+    ? filterTitle || "Tag"
     : "All Feeds";
 
   const showRefreshBar = refreshing && refreshProgress && refreshProgress.total > 0;
@@ -939,7 +986,10 @@ function FeedsContent() {
                 article={selectedArticle}
                 onClose={() => { setSelectedArticle(null); setMobileShowArticle(false); }}
                 onBookmarkToggle={handleBookmarkToggle}
-                bookmarked={bookmarkedIds.has(selectedArticle.id)}
+                bookmarked={
+                  articles.find((a) => a.id === selectedArticle.id)?.isBookmarked ??
+                  !!selectedArticle.isBookmarked
+                }
               />
             ) : (
               <div className="flex flex-1 items-center justify-center">

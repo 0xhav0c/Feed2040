@@ -22,11 +22,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   try {
     // Support optional feedId body param to refresh a single feed
-    let feedIdFilter: string | undefined;
+    // or a list of feeds (feedIds) — e.g. "retry all unhealthy feeds" in one
+    // request instead of one per feed against the rate limit.
+    let feedIdFilter: string[] | undefined;
     try {
       const body = await req.json();
       if (body?.feedId && typeof body.feedId === "string") {
-        feedIdFilter = body.feedId;
+        feedIdFilter = [body.feedId];
+      } else if (Array.isArray(body?.feedIds)) {
+        feedIdFilter = body.feedIds.filter((id: unknown): id is string => typeof id === "string").slice(0, 500);
       }
     } catch {
       // No body or invalid JSON — refresh all feeds
@@ -36,7 +40,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       where: {
         userId: session.user.id,
         isSystem: false,
-        ...(feedIdFilter ? { id: feedIdFilter } : {}),
+        ...(feedIdFilter ? { id: { in: feedIdFilter } } : {}),
       },
       select: {
         id: true,

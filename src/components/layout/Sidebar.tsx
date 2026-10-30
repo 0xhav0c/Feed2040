@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   Tag as TagIcon,
@@ -157,11 +158,21 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
   const activeSaved = searchParams.get("saved") === "1";
 
   const handleEditSave = async (id: string, title: string, options?: { scrapeFullText?: boolean; refreshInterval?: number | null }) => {
-    await fetch(`/api/feeds/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, ...options }),
-    });
+    try {
+      const res = await fetch(`/api/feeds/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, ...options }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to save feed");
+        return;
+      }
+    } catch {
+      toast.error("Failed to save feed");
+      return;
+    }
     setEditFeed(null);
     fetchSidebar();
   };
@@ -170,7 +181,11 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
     if (!deleteFeed) return;
     setDeleteLoading(true);
     try {
-      await fetch(`/api/feeds/${deleteFeed.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/feeds/${deleteFeed.id}`, { method: "DELETE" }).catch(() => null);
+      if (!res?.ok) {
+        toast.error("Failed to delete feed");
+        return;
+      }
       setDeleteFeed(null);
       if (activeFeedId === deleteFeed.id) {
         router.push("/feeds");
@@ -231,10 +246,16 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
     }, 60_000);
     // Refresh immediately when read state changes elsewhere (e.g. "mark all
     // read" on the feed list) instead of waiting for the next interval tick.
-    const onReadChanged = () => fetchSidebar();
+    // Debounced: reading through articles with j/k fires this per article.
+    let readTimer: ReturnType<typeof setTimeout> | null = null;
+    const onReadChanged = () => {
+      if (readTimer) clearTimeout(readTimer);
+      readTimer = setTimeout(fetchSidebar, 800);
+    };
     window.addEventListener("feed:read-changed", onReadChanged);
     return () => {
       clearInterval(interval);
+      if (readTimer) clearTimeout(readTimer);
       window.removeEventListener("feed:read-changed", onReadChanged);
     };
   }, [fetchSidebar]);
@@ -637,7 +658,18 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
             "h-auto w-full justify-start gap-3 rounded-xl px-3.5 py-2.5 text-[0.9rem] text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
             collapsed && "justify-center px-2"
           )}
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={async () => {
+            // Pages cached by the service worker hold this user's content.
+            if (typeof window !== "undefined" && "caches" in window) {
+              try {
+                const keys = await caches.keys();
+                await Promise.all(keys.filter((k) => k.startsWith("feed2040-pages")).map((k) => caches.delete(k)));
+              } catch {
+                /* best effort */
+              }
+            }
+            signOut({ callbackUrl: "/login" });
+          }}
         >
           {session?.user?.name ? (
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">

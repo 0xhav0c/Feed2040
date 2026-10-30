@@ -494,10 +494,18 @@ function GeneralSettings({ isAdmin }: { isAdmin: boolean }) {
   async function handleRetryAll() {
     setRetryingAll(true);
     try {
-      await Promise.all(unhealthyFeeds.map((f) =>
-        fetch("/api/feeds/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feedId: f.id }) })
-      ));
-      toast.success("All feeds retried");
+      const res = await fetch("/api/feeds/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedIds: unhealthyFeeds.map((f) => f.id) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const { updated = 0, failed = 0 } = data.data || {};
+        toast.success(`Retried ${updated + failed} feeds: ${updated} recovered, ${failed} still failing`);
+      } else {
+        toast.error(data.error || "Failed to retry");
+      }
       await fetchFeedHealth();
     } catch {
       toast.error("Failed to retry");
@@ -1642,14 +1650,25 @@ function NotificationRulesTab() {
 
   async function handleToggle(id: string, isActive: boolean) {
     setRules((prev) => prev.map((r) => (r.id === id ? { ...r, isActive: !isActive } : r)));
-    try { await fetch(`/api/notification-rules/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !isActive }) }); }
-    catch { setRules((prev) => prev.map((r) => (r.id === id ? { ...r, isActive } : r))); }
+    try {
+      const res = await fetch(`/api/notification-rules/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !isActive }) });
+      if (!res.ok) throw new Error("toggle failed");
+    } catch {
+      setRules((prev) => prev.map((r) => (r.id === id ? { ...r, isActive } : r)));
+      toast.error("Failed to update rule");
+    }
   }
 
   async function handleDelete(id: string) {
     setRules((prev) => prev.filter((r) => r.id !== id));
-    try { await fetch(`/api/notification-rules/${id}`, { method: "DELETE" }); toast.success("Rule deleted"); }
-    catch { fetchRules(); toast.error("Failed"); }
+    try {
+      const res = await fetch(`/api/notification-rules/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      toast.success("Rule deleted");
+    } catch {
+      fetchRules();
+      toast.error("Failed to delete rule");
+    }
   }
 
   return (
@@ -2050,11 +2069,12 @@ function FeverApiTab() {
 
   const handleDisable = async () => {
     try {
-      await fetch("/api/settings/fever", {
+      const res = await fetch("/api/settings/fever", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "disable" }),
       });
+      if (!res.ok) throw new Error("disable failed");
       setEnabled(false);
       setApiKey(null);
       toast.success("Fever API disabled");

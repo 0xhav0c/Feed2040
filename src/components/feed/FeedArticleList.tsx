@@ -12,6 +12,7 @@ type Props = {
   articles?: ArticleWithFeed[];
   onSelectArticle?: (article: ArticleWithFeed) => void;
   selectedArticleId?: string | null;
+  onBookmarkToggle?: (articleId: string) => void;
 };
 
 export const FeedArticleList = memo(function FeedArticleList({
@@ -19,6 +20,7 @@ export const FeedArticleList = memo(function FeedArticleList({
   articles = [],
   onSelectArticle,
   selectedArticleId,
+  onBookmarkToggle,
 }: Props) {
   if (articles.length === 0) {
     return (
@@ -61,6 +63,7 @@ export const FeedArticleList = memo(function FeedArticleList({
           viewMode={viewMode}
           onSelect={onSelectArticle}
           isSelected={selectedArticleId === article.id}
+          onBookmarkToggle={onBookmarkToggle}
         />
       ))}
     </div>
