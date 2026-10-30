@@ -107,8 +107,8 @@ export default function SetupPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="w-full max-w-md text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent/10">
-            <CheckCircle2 className="h-7 w-7 text-accent" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-signal/10">
+            <CheckCircle2 className="h-7 w-7 text-signal" />
           </div>
           <h1 className="text-2xl font-bold">Already Configured</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -140,8 +140,8 @@ export default function SetupPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="w-full max-w-md text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10">
-            <CheckCircle2 className="h-8 w-8 text-accent" />
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-signal/10">
+            <CheckCircle2 className="h-8 w-8 text-signal" />
           </div>
           <h1 className="text-2xl font-bold">All Set!</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -161,7 +161,7 @@ export default function SetupPage() {
       {/* Background decoration */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-24 -right-24 h-96 w-96 rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-accent/5 blur-3xl" />
+        <div className="absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-signal/5 blur-3xl" />
       </div>
       <div className="relative w-full max-w-lg">
         {/* Hero */}

@@ -960,7 +960,7 @@ export default function AddFeedPage() {
                     {preview.itemCount} articles · {url}
                   </p>
                 </div>
-                <CheckCircle2 size={20} className="text-accent" />
+                <CheckCircle2 size={20} className="text-signal" />
               </div>
 
               <Card className="rounded-2xl border border-border bg-card p-6 shadow-sm">

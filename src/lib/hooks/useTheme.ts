@@ -17,11 +17,12 @@ function applyTheme(theme: Theme) {
 }
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>("system");
+  const [theme, setThemeState] = useState<Theme>("dark");
 
   useEffect(() => {
     const saved = localStorage.getItem("feed2040-theme") as Theme | null;
-    const initial = saved || "system";
+    // Dark is the default look of the app (design system: AI-Native).
+    const initial = saved || "dark";
     setThemeState(initial);
     applyTheme(initial);
 

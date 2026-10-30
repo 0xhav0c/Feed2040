@@ -174,7 +174,7 @@ export default function LoginPage() {
       {/* Background decoration */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-24 -right-24 h-96 w-96 rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-accent/5 blur-3xl" />
+        <div className="absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-signal/5 blur-3xl" />
       </div>
       <div className="relative w-full max-w-md">
         <div className="mb-8 text-center">

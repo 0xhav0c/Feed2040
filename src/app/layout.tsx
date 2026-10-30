@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Inter } from "next/font/google";
 import { Providers } from "./providers";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+// latin-ext covers Turkish (ı, ş, ğ, İ …), which Geist's latin subset lacked.
+const inter = Inter({ subsets: ["latin", "latin-ext"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "Feed2040 - Smart RSS Reader",
@@ -16,14 +17,14 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
+    <html lang="en" suppressHydrationWarning className={cn("font-sans", inter.variable)}>
       <head>
         {/* Apple touch icon for iOS home screen (replace with PNG once generated) */}
         <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.svg" />
         {/* Prevent FOUC: apply theme before paint */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('feed2040-theme');if(t==='dark'||((!t||t==='system')&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}})()`,
+            __html: `(function(){try{var t=localStorage.getItem('feed2040-theme');if(!t||t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}})()`,
           }}
         />
         <script
@@ -32,7 +33,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${geist.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} font-sans antialiased`}>
         <Providers>{children}</Providers>
       </body>
     </html>
