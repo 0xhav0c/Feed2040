@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { parseOpml, flattenOpmlFeeds } from "@/lib/rss/opml";
 import { validateFeedUrl } from "@/lib/utils/url-validator";
+import { safeFetchText } from "@/lib/utils/safe-fetch";
 
 // POST /api/opml/parse - Parse OPML file or URL and return feed list
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -24,14 +25,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (!urlCheck.valid) {
         return NextResponse.json({ error: urlCheck.error }, { status: 400 });
       }
-      const response = await fetch(url, {
-        headers: { "User-Agent": "Feed2040/1.0" },
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!response.ok) {
-        return NextResponse.json({ error: `Failed to fetch OPML: HTTP ${response.status}` }, { status: 400 });
+      // SSRF-hardened fetch: re-validates redirects and resolved IPs and caps
+      // the body, like every other server-side fetch of a user-given URL.
+      try {
+        const result = await safeFetchText(url, {
+          headers: { "User-Agent": "Feed2040/1.0" },
+          timeoutMs: 15_000,
+          maxBytes: 5_000_000,
+        });
+        xmlContent = result.text;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        return NextResponse.json({ error: `Failed to fetch OPML: ${msg}` }, { status: 400 });
       }
-      xmlContent = await response.text();
     } else {
       const formData = await req.formData();
       const file = formData.get("file") as File | null;

@@ -56,11 +56,11 @@ export async function checkRateLimit(
 
   try {
     const redisKey = `ratelimit:${key}`;
-    const current = await redis.incr(redisKey);
-
-    if (current === 1) {
-      await redis.expire(redisKey, windowSeconds);
-    }
+    // INCR and EXPIRE in one round trip; NX keeps the window fixed. If the
+    // separate EXPIRE ever failed the key would never expire and the limiter
+    // (including login) would stay locked for good.
+    const results = await redis.multi().incr(redisKey).expire(redisKey, windowSeconds, "NX").exec();
+    const current = Number(results?.[0]?.[1] ?? 0);
 
     const remaining = Math.max(0, maxRequests - current);
 

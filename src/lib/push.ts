@@ -23,8 +23,15 @@ export async function getVapidKeys(): Promise<VapidKeys> {
       const parsed = JSON.parse(existing) as VapidKeys;
       if (parsed.publicKey && parsed.privateKey) return parsed;
     } catch {
-      /* fall through and regenerate */
+      /* fall through */
     }
+  }
+  // getAppSetting() also returns null on a transient DB/decrypt error.
+  // Regenerating then would silently break every existing subscription, so
+  // only create keys when the row genuinely doesn't exist.
+  const row = await prisma.appSettings.findUnique({ where: { key: VAPID_SETTING_KEY } });
+  if (row) {
+    throw new Error("VAPID keys exist but could not be read");
   }
   const keys = webpush.generateVAPIDKeys();
   await setAppSetting(VAPID_SETTING_KEY, JSON.stringify(keys));
