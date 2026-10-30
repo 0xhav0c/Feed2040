@@ -380,6 +380,23 @@ select optgroup {
   background: var(--muted);
 }
 
+/* Fill the reading column: wrap long code lines, URLs and unbroken tokens
+   (CVSS vectors, hashes) instead of overflowing or clipping on the right */
+.article-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.article-content pre,
+.article-content pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Line-number gutters can't follow wrapped lines, so drop them */
+.article-content figure.highlight td.gutter,
+.article-content .highlight td.gutter {
+  display: none;
+}
+
 .article-content iframe,
 .article-content video,
 .article-content embed,

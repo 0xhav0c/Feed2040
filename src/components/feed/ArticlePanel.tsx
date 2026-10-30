@@ -1187,7 +1187,7 @@ export const ArticlePanel = memo(function ArticlePanel({
 
         {/* Scrollable article content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <article className="mx-auto max-w-[720px] px-5 pb-36 pt-7 lg:px-10">
+          <article className="w-full min-w-0 px-5 pb-36 pt-7 lg:px-12">
 
             {/* Meta */}
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-muted-foreground">
@@ -1301,7 +1301,7 @@ export const ArticlePanel = memo(function ArticlePanel({
                     [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-4
                     [&_li]:mb-2 [&_li]:leading-[1.75]
                     [&_blockquote]:border-l-4 [&_blockquote]:border-primary/30 [&_blockquote]:pl-5 [&_blockquote]:italic [&_blockquote]:text-muted-foreground [&_blockquote]:my-5
-                    [&_pre]:bg-muted [&_pre]:rounded-xl [&_pre]:p-4 [&_pre]:overflow-x-auto [&_pre]:text-sm [&_pre]:my-5
+                    [&_pre]:bg-muted [&_pre]:rounded-xl [&_pre]:p-4 [&_pre]:whitespace-pre-wrap [&_pre]:text-sm [&_pre]:my-5
                     [&_code]:bg-muted [&_code]:rounded-md [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-sm
                     [&_table]:w-full [&_table]:border-collapse [&_table]:my-5
                     [&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-sm [&_th]:font-semibold [&_th]:bg-muted
