@@ -31,19 +31,19 @@ export function Header({
   actions,
 }: HeaderProps) {
   return (
-    <header className="flex h-[72px] items-center justify-between border-b border-border bg-card/80 backdrop-blur-sm px-8">
+    <header className="flex min-h-16 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-md md:px-6">
       <div className="min-w-0">
-        <h1 className="text-xl font-bold text-foreground tracking-tight">
+        <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
           {title}
         </h1>
         {subtitle && (
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
+          <p className="truncate text-[13px] text-muted-foreground">{subtitle}</p>
         )}
       </div>
 
       <div className="flex items-center gap-2.5">
         {onViewModeChange && (
-          <div className="mr-1 flex items-center rounded-lg border border-border bg-muted/50 p-0.5">
+          <div className="mr-1 flex items-center rounded-[9px] border border-border bg-background p-[3px]" role="group" aria-label="View mode">
             {VIEW_OPTIONS.map((option) => {
               const Icon = option.icon;
               return (
@@ -51,15 +51,16 @@ export function Header({
                   key={option.mode}
                   onClick={() => onViewModeChange(option.mode)}
                   className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-md transition-all",
+                    "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
                     viewMode === option.mode
-                      ? "bg-card text-foreground shadow-sm"
+                      ? "bg-muted text-foreground ring-1 ring-border"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                   title={option.label}
                   aria-label={`${option.label} view`}
+                  aria-pressed={viewMode === option.mode}
                 >
-                  <Icon size={18} />
+                  <Icon size={16} />
                 </button>
               );
             })}

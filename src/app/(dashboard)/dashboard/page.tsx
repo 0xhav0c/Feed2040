@@ -91,7 +91,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Header title="Dashboard" subtitle="Overview of your feeds and reading activity" />
+      <Header title="Overview" subtitle="Your feeds and reading activity" />
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-6">
           {/* Empty state: no feeds */}

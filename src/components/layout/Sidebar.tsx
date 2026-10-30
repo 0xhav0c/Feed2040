@@ -11,7 +11,7 @@ import {
   Tag as TagIcon,
   Rss,
   Bookmark,
-  BookmarkPlus,
+  Library as LibraryIcon,
   Search,
   Bell,
   Trash2,
@@ -44,7 +44,7 @@ import {
   GraduationCap,
   type LucideIcon,
 } from "lucide-react";
-import { TelegramIcon } from "@/components/icons/BrandIcons";
+import { OPEN_COMMAND_PALETTE } from "@/components/layout/CommandPalette";
 import { FeedContextMenu } from "@/components/feed/FeedContextMenu";
 import { FeedEditDialog } from "@/components/feed/FeedEditDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -55,13 +55,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Separator } from "@/components/ui/separator";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   FolderTree,
@@ -108,13 +106,13 @@ type SidebarCategory = {
   unread: number;
 };
 
+// "Saved" (read-it-later links) and "Read Later" (bookmarks) were two entries
+// for the same intent; they now live together under Library.
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, param: "" },
-  { href: "/feeds", label: "All Feeds", icon: Rss, param: "" },
-  { href: "/feeds?saved=1", label: "Saved", icon: BookmarkPlus, param: "saved" },
-  { href: "/bookmarks", label: "Read Later", icon: Bookmark, param: "" },
-  { href: "/briefing", label: "Daily Briefing", icon: Sparkles, param: "" },
-  { href: "/settings", label: "Settings", icon: Settings, param: "" },
+  { key: "overview", href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { key: "feeds", href: "/feeds", label: "All Feeds", icon: Rss },
+  { key: "briefing", href: "/briefing", label: "Daily Briefing", icon: Sparkles },
+  { key: "library", href: "/bookmarks", label: "Library", icon: LibraryIcon },
 ] as const;
 
 type SidebarProps = {
@@ -125,7 +123,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   return (
     <Suspense
       fallback={
-        <div className="flex h-screen w-80 bg-sidebar border-r border-sidebar-border" />
+        <div className="flex h-screen w-[260px] border-r border-sidebar-border bg-sidebar" />
       }
     >
       <SidebarInner onNavigate={onNavigate} />
@@ -269,245 +267,198 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
     });
   }
 
+  const navActive = (item: (typeof NAV_ITEMS)[number]) => {
+    const onListRoot = !activeFeedId && !activeCategoryId && !activeTagId;
+    if (item.key === "library") return pathname.startsWith("/bookmarks") || activeSaved;
+    if (item.key === "feeds") return pathname === "/feeds" && onListRoot && !activeSaved;
+    return pathname === item.href || pathname.startsWith(item.href + "/");
+  };
+
+  const rowBase =
+    "relative flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors duration-150";
+  const rowIdle = "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground";
+  const rowOn = "bg-sidebar-accent text-foreground";
+
   return (
     <aside
       className={cn(
-        "flex h-screen flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300",
-        collapsed ? "w-[68px]" : "w-80"
+        "flex h-screen flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200",
+        collapsed ? "w-[64px]" : "w-[260px]"
       )}
     >
-      {/* Logo */}
-      <div className="flex h-[72px] items-center justify-between px-5">
-        {!collapsed ? (
-          <Link href="/feeds" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary shadow-md shadow-primary/25">
-              <Rss className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-foreground">
-              Feed2040
-            </span>
-          </Link>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Link
-                  href="/feeds"
-                  className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-md shadow-primary/25"
-                />
-              }
-            >
-              <Rss className="h-4 w-4 text-primary-foreground" />
-            </TooltipTrigger>
-            <TooltipContent side="right">Feed2040</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-
-      {/* Add Feed button */}
-      <div className={cn("px-5 pb-4", collapsed && "px-2")}>
-        {collapsed ? (
+      {/* Brand + add feed */}
+      <div className={cn("flex h-16 items-center gap-2 px-4", collapsed && "justify-center px-2")}>
+        <Link href="/feeds" onClick={onNavigate} className="flex min-w-0 items-center gap-2.5" aria-label="Feed2040 home">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand to-signal shadow-[0_4px_16px_-4px] shadow-brand/60">
+            <Rss className="h-4 w-4 text-white" aria-hidden />
+          </span>
+          {!collapsed && <span className="truncate text-[15px] font-semibold tracking-tight text-foreground">Feed2040</span>}
+        </Link>
+        {!collapsed && (
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
-                  variant="default"
+                  variant="ghost"
                   size="icon"
-                  className="h-9 w-full rounded-xl shadow-sm shadow-primary/20"
+                  className="ml-auto h-8 w-8 rounded-lg text-sidebar-foreground hover:text-foreground"
                   onClick={() => {
                     router.push("/feeds/add");
                     onNavigate?.();
                   }}
-                  aria-label="Add Feed"
+                  aria-label="Add feed"
                 />
               }
             >
-              <Plus size={16} />
+              <Plus size={18} />
             </TooltipTrigger>
-            <TooltipContent side="right">Add Feed</TooltipContent>
+            <TooltipContent side="right">Add feed</TooltipContent>
           </Tooltip>
-        ) : (
-          <Button
-            variant="default"
-            className="w-full rounded-xl h-11 text-[0.95rem] font-semibold shadow-sm shadow-primary/20"
-            onClick={() => {
-              router.push("/feeds/add");
-              onNavigate?.();
-            }}
-          >
-            <Plus size={18} />
-            <span>Add Feed</span>
-          </Button>
         )}
       </div>
 
-      <Separator className="bg-sidebar-border" />
+      {/* ⌘K */}
+      <div className={cn("px-3 pb-3", collapsed && "px-2")}>
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE))}
+          className={cn(
+            "flex h-9 w-full items-center gap-2 rounded-lg border border-sidebar-border bg-card px-2.5 text-[13px] text-muted-foreground transition-colors hover:border-input hover:text-foreground",
+            collapsed && "justify-center px-0"
+          )}
+          aria-label="Search or jump to (Ctrl+K)"
+        >
+          <Search size={15} aria-hidden />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">Search or jump to…</span>
+              <kbd className="rounded border border-sidebar-border px-1.5 text-[10.5px] font-medium">⌘K</kbd>
+            </>
+          )}
+        </button>
+      </div>
 
-      {/* Navigation */}
-      <ScrollArea className="min-h-0 flex-1 px-4 py-3">
-        <div className="space-y-1">
+      <ScrollArea className="min-h-0 flex-1 px-3 pb-3">
+        <nav className="space-y-0.5" aria-label="Main">
           {NAV_ITEMS.map((item) => {
-            const isActive =
-              item.param === "saved"
-                ? activeSaved
-                : (pathname === item.href || pathname.startsWith(item.href + "/")) &&
-                  !activeFeedId &&
-                  !activeCategoryId &&
-                  !activeTagId &&
-                  !activeSaved;
+            const isActive = navActive(item);
             const Icon = item.icon;
-
-            const linkClasses = cn(
-              "relative flex items-center gap-3.5 rounded-xl px-4 py-3 text-[0.95rem] font-medium transition-all duration-150",
-              isActive
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
-              collapsed && "justify-center px-2"
-            );
-
-            const linkContent = (
-              <>
-                {isActive && (
-                  <div className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
-                )}
-                <Icon size={20} className={cn(isActive && "text-primary")} />
-                {!collapsed && (
-                  <>
-                    <span className="flex-1 text-left">{item.label}</span>
-                    {item.href === "/feeds" && totalUnread > 0 && (
-                      <Badge
-                        variant="secondary"
-                        className="rounded-full bg-primary/15 px-1.5 py-0 text-[10px] font-bold text-primary hover:bg-primary/15"
-                      >
-                        {totalUnread > 999 ? "999+" : totalUnread}
-                      </Badge>
+            const link = (
+              <Link
+                href={item.href}
+                onClick={onNavigate}
+                aria-current={isActive ? "page" : undefined}
+                className={cn(rowBase, isActive ? rowOn : rowIdle, collapsed && "justify-center px-0")}
+              >
+                <Icon size={17} className={cn("shrink-0", isActive && "text-primary")} aria-hidden />
+                {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                {!collapsed && item.key === "feeds" && totalUnread > 0 && (
+                  <span
+                    className={cn(
+                      "rounded-md px-1.5 py-px text-[11.5px] font-medium tabular-nums",
+                      isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
                     )}
-                  </>
-                )}
-              </>
-            );
-
-            if (collapsed) {
-              return (
-                <Tooltip key={item.href}>
-                  <TooltipTrigger
-                    render={
-                      <Link href={item.href} onClick={onNavigate} className={linkClasses} />
-                    }
                   >
-                    {linkContent}
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
-              );
-            }
-
-            return (
-              <Link key={item.href} href={item.href} onClick={onNavigate} className={linkClasses}>
-                {linkContent}
+                    {totalUnread > 9999 ? "9999+" : totalUnread.toLocaleString("en-US")}
+                  </span>
+                )}
               </Link>
             );
+            return collapsed ? (
+              <Tooltip key={item.href}>
+                <TooltipTrigger render={link} />
+                <TooltipContent side="right">{item.label}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <div key={item.href}>{link}</div>
+            );
           })}
-        </div>
+        </nav>
 
-        {/* Categories + Feeds */}
+        {/* Categories + feeds */}
         {!collapsed && categories.length > 0 && (
-          <div className="mt-4">
-            <Separator className="mb-3 bg-sidebar-border" />
-            <p className="mb-2 px-4 text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60">
-              Categories
-            </p>
+          <section className="mt-5" aria-label="Categories">
+            <div className="flex items-center justify-between px-2.5 pb-1.5">
+              <p className="text-[11.5px] font-medium text-muted-foreground">Categories</p>
+              <Link href="/categories" onClick={onNavigate} className="text-[11.5px] text-muted-foreground hover:text-foreground">
+                Manage
+              </Link>
+            </div>
             <div className="space-y-0.5">
               {categories.map((cat) => {
                 const isExpanded = expandedCats.has(cat.id);
                 const isCatActive = activeCategoryId === cat.id;
-
+                const CatIcon = getCategoryIcon(cat.icon);
                 return (
-                  <Collapsible
-                    key={cat.id}
-                    open={isExpanded}
-                    onOpenChange={() => toggleCat(cat.id)}
-                  >
-                    <div className="flex items-center">
+                  <Collapsible key={cat.id} open={isExpanded} onOpenChange={() => toggleCat(cat.id)}>
+                    <div className={cn("group flex items-center rounded-lg", isCatActive ? rowOn : "hover:bg-sidebar-accent")}>
                       <CollapsibleTrigger
                         render={
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-sidebar-accent"
+                          <button
+                            type="button"
+                            className="flex h-9 w-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+                            aria-label={isExpanded ? `Collapse ${cat.name}` : `Expand ${cat.name}`}
                           />
                         }
                       >
-                        <ChevronDown
-                          size={13}
-                          className={cn(
-                            "transition-transform duration-200",
-                            !isExpanded && "-rotate-90"
-                          )}
-                        />
+                        <ChevronDown size={13} className={cn("transition-transform duration-150", !isExpanded && "-rotate-90")} />
                       </CollapsibleTrigger>
-                      <Button
-                        variant="ghost"
+                      <button
+                        type="button"
                         className={cn(
-                          "h-auto flex-1 justify-start gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium min-w-0",
-                          isCatActive
-                            ? "bg-primary/10 text-primary hover:bg-primary/15"
-                            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
+                          "flex min-h-9 min-w-0 flex-1 items-center gap-2 pr-2.5 text-left text-[13.5px]",
+                          isCatActive ? "text-foreground" : "text-sidebar-foreground group-hover:text-foreground"
                         )}
                         onClick={() => {
                           router.push(`/feeds?categoryId=${cat.id}`);
                           onNavigate?.();
                         }}
+                        aria-current={isCatActive ? "page" : undefined}
                       >
-                        {(() => { const CatIcon = getCategoryIcon(cat.icon); return <CatIcon size={16} className="shrink-0" />; })()}
-                        <span className="flex-1 truncate text-left">{cat.name}</span>
+                        <CatIcon
+                          size={15}
+                          className="shrink-0"
+                          style={{ color: cat.color || "var(--primary)" }}
+                          aria-hidden
+                        />
+                        <span className="flex-1 truncate">{cat.name}</span>
                         {cat.unread > 0 && (
-                          <Badge
-                            variant="secondary"
-                            className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0 text-[10px] font-bold text-primary hover:bg-primary/15"
-                          >
+                          <span className="rounded-md bg-muted px-1.5 py-px text-[11px] tabular-nums text-muted-foreground">
                             {cat.unread}
-                          </Badge>
+                          </span>
                         )}
-                      </Button>
+                      </button>
                     </div>
 
                     <CollapsibleContent>
                       {cat.feeds.length > 0 && (
-                        <div className="ml-6 space-y-0.5 py-0.5">
+                        <div className="ml-3 space-y-px border-l border-sidebar-border py-0.5 pl-2">
                           {cat.feeds.map((feed) => {
                             const isFeedActive = activeFeedId === feed.id;
                             return (
                               <div key={feed.id} className="group flex items-center gap-0.5">
-                                <Button
-                                  variant="ghost"
+                                <button
+                                  type="button"
                                   className={cn(
-                                    "h-auto flex-1 justify-start gap-2.5 rounded-lg px-2.5 py-2 text-[0.8rem] min-w-0",
-                                    isFeedActive
-                                      ? "bg-primary/10 text-primary font-medium hover:bg-primary/15"
-                                      : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                                    "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors",
+                                    isFeedActive ? rowOn : rowIdle
                                   )}
                                   onClick={() => {
                                     router.push(`/feeds?feedId=${feed.id}`);
                                     onNavigate?.();
                                   }}
+                                  aria-current={isFeedActive ? "page" : undefined}
                                 >
                                   {feed.faviconUrl ? (
-                                    <img
-                                      src={feed.faviconUrl}
-                                      alt=""
-                                      className="h-3.5 w-3.5 shrink-0 rounded"
-                                    />
+                                    <img src={feed.faviconUrl} alt="" className="h-3.5 w-3.5 shrink-0 rounded-sm" loading="lazy" />
                                   ) : (
-                                    <Rss size={12} className="shrink-0 opacity-50" />
+                                    <Rss size={12} className="shrink-0 opacity-60" aria-hidden />
                                   )}
-                                  <span className="flex-1 truncate text-left">{feed.title}</span>
+                                  <span className="flex-1 truncate">{feed.title}</span>
                                   {feed.unread > 0 && (
-                                    <span className="shrink-0 text-[10px] font-semibold text-primary/70">
-                                      {feed.unread}
-                                    </span>
+                                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{feed.unread}</span>
                                   )}
-                                </Button>
+                                </button>
                                 <FeedContextMenu
                                   feedId={feed.id}
                                   feedTitle={feed.title}
@@ -524,82 +475,73 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
                 );
               })}
             </div>
-          </div>
+          </section>
         )}
 
         {/* Tags */}
         {!collapsed && tags.length > 0 && (
-          <div className="mt-4">
-            <Separator className="mb-3 bg-sidebar-border" />
-            <p className="mb-2 px-4 text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60">
-              Tags
-            </p>
-            <div className="flex flex-wrap gap-1.5 px-3">
+          <section className="mt-5" aria-label="Tags">
+            <p className="px-2.5 pb-1.5 text-[11.5px] font-medium text-muted-foreground">Tags</p>
+            <div className="flex flex-wrap gap-1.5 px-2">
               {tags.map((tag) => (
                 <button
                   key={tag.id}
+                  type="button"
                   onClick={() => {
                     router.push(`/feeds?tagId=${tag.id}`);
                     onNavigate?.();
                   }}
+                  aria-current={activeTagId === tag.id ? "page" : undefined}
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                    "inline-flex min-h-7 items-center gap-1 rounded-md border px-2 text-xs transition-colors",
                     activeTagId === tag.id
-                      ? "border-primary/50 bg-primary/10 text-primary"
-                      : "border-sidebar-border text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-sidebar-border text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                   )}
                 >
-                  <TagIcon size={11} />
+                  <TagIcon size={11} aria-hidden />
                   {tag.name}
-                  <span className="text-[10px] opacity-70">{tag.count}</span>
+                  <span className="tabular-nums opacity-70">{tag.count}</span>
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Saved Searches */}
+        {/* Saved searches */}
         {!collapsed && savedSearches.length > 0 && (
-          <div className="mt-4">
-            <Separator className="mb-3 bg-sidebar-border" />
-            <p className="mb-2 px-4 text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60">
-              Searches
-            </p>
+          <section className="mt-5" aria-label="Saved searches">
+            <p className="px-2.5 pb-1.5 text-[11.5px] font-medium text-muted-foreground">Searches</p>
             <div className="space-y-0.5">
               {savedSearches.map((s) => (
                 <div key={s.id} className="group flex items-center gap-0.5">
-                  <Button
-                    variant="ghost"
-                    className="h-auto flex-1 justify-start gap-2.5 rounded-lg px-2.5 py-2 text-[0.8rem] min-w-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                  <button
+                    type="button"
+                    className={cn(rowBase, rowIdle, "min-h-8 text-[13px]")}
                     onClick={() => {
                       router.push(searchHref(s));
                       onNavigate?.();
                     }}
                   >
-                    <Search size={13} className="shrink-0 opacity-60" />
+                    <Search size={14} className="shrink-0 opacity-70" aria-hidden />
                     <span className="flex-1 truncate text-left">{s.name}</span>
-                    {s.notify && (
-                      <span title="Monitoring on">
-                        <Bell size={11} className="shrink-0 text-primary/70" />
-                      </span>
-                    )}
-                  </Button>
+                    {s.notify && <Bell size={12} className="shrink-0 text-signal" aria-label="Monitoring on" />}
+                  </button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 shrink-0 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive hover:bg-destructive/10"
+                    className="h-8 w-8 shrink-0 rounded-md text-muted-foreground opacity-0 focus-visible:opacity-100 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
                     onClick={() => handleDeleteSearch(s.id)}
                     aria-label={`Delete search ${s.name}`}
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={13} />
                   </Button>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Collapsed: categories expand icon */}
         {collapsed && categories.length > 0 && (
           <div className="mt-4 flex justify-center">
             <Tooltip>
@@ -608,107 +550,76 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 rounded-xl text-sidebar-foreground hover:bg-sidebar-accent"
+                    className="h-9 w-9 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent"
                     onClick={() => setCollapsed(false)}
                     aria-label="Expand to see categories"
                   />
                 }
               >
-                <FolderOpen size={18} />
+                <FolderOpen size={17} />
               </TooltipTrigger>
               <TooltipContent side="right">Expand to see categories</TooltipContent>
             </Tooltip>
           </div>
         )}
-
-        {!collapsed && (
-          <div className="mt-4">
-            <Separator className="mb-3 bg-sidebar-border" />
-            <p className="mb-2 px-4 text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60">
-              Integrations
-            </p>
-            <Link
-              href="/settings?tab=ai"
-              className="flex items-center gap-3.5 rounded-xl px-4 py-2.5 text-[0.9rem] font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
-            >
-              <Sparkles size={20} />
-              <span>AI Settings</span>
-            </Link>
-            <Link
-              href="/settings?tab=telegram"
-              className="flex items-center gap-3.5 rounded-xl px-4 py-2.5 text-[0.9rem] font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
-            >
-              <TelegramIcon size={20} />
-              <span>Telegram Bot</span>
-            </Link>
-          </div>
-        )}
       </ScrollArea>
 
-      <Separator className="bg-sidebar-border" />
-
-      {/* Footer */}
-      <div className="space-y-2 p-4">
-        <div className={cn(collapsed && "flex justify-center")}>
-          <ThemeToggle collapsed={collapsed} />
-        </div>
-        <Button
-          variant="ghost"
-          className={cn(
-            "h-auto w-full justify-start gap-3 rounded-xl px-3.5 py-2.5 text-[0.9rem] text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
-            collapsed && "justify-center px-2"
-          )}
-          onClick={async () => {
-            // Pages cached by the service worker hold this user's content.
-            if (typeof window !== "undefined" && "caches" in window) {
-              try {
-                const keys = await caches.keys();
-                await Promise.all(keys.filter((k) => k.startsWith("feed2040-pages")).map((k) => caches.delete(k)));
-              } catch {
-                /* best effort */
-              }
-            }
-            signOut({ callbackUrl: "/login" });
-          }}
+      {/* Footer: settings, theme, account */}
+      <div className="space-y-1 border-t border-sidebar-border p-3">
+        <Link
+          href="/settings"
+          onClick={onNavigate}
+          aria-current={pathname.startsWith("/settings") ? "page" : undefined}
+          className={cn(rowBase, pathname.startsWith("/settings") ? rowOn : rowIdle, collapsed && "justify-center px-0")}
         >
-          {session?.user?.name ? (
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">
-              {session.user.name.charAt(0).toUpperCase()}
-            </div>
-          ) : (
-            <User size={16} />
-          )}
-          {!collapsed && (
-            <>
-              <span className="flex-1 truncate text-left">
-                {session?.user?.name || "Sign Out"}
-              </span>
-              <LogOut size={14} className="text-muted-foreground" />
-            </>
-          )}
-        </Button>
-      </div>
-
-      <Separator className="bg-sidebar-border" />
-
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-full rounded-none text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-              onClick={() => setCollapsed(!collapsed)}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            />
-          }
+          <Settings size={17} className={cn("shrink-0", pathname.startsWith("/settings") && "text-primary")} aria-hidden />
+          {!collapsed && <span className="flex-1">Settings</span>}
+        </Link>
+        <div className={cn("flex items-center gap-2 pt-1", collapsed && "flex-col")}>
+          <button
+            type="button"
+            className={cn(
+              "flex min-h-9 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-[13px] text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
+              collapsed && "w-full flex-none justify-center px-0"
+            )}
+            onClick={async () => {
+              // Pages cached by the service worker hold this user's content.
+              if (typeof window !== "undefined" && "caches" in window) {
+                try {
+                  const keys = await caches.keys();
+                  await Promise.all(keys.filter((k) => k.startsWith("feed2040-pages")).map((k) => caches.delete(k)));
+                } catch {
+                  /* best effort */
+                }
+              }
+              signOut({ callbackUrl: "/login" });
+            }}
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-muted text-[11px] font-semibold text-foreground">
+              {session?.user?.name ? session.user.name.charAt(0).toUpperCase() : <User size={13} />}
+            </span>
+            {!collapsed && (
+              <>
+                <span className="flex-1 truncate text-left">{session?.user?.name || "Sign out"}</span>
+                <LogOut size={14} className="text-muted-foreground" aria-hidden />
+              </>
+            )}
+          </button>
+          {!collapsed && <div className="w-[96px] shrink-0"><ThemeToggle /></div>}
+          {collapsed && <ThemeToggle collapsed />}
+        </div>
+        <button
+          type="button"
+          className="mt-1 flex h-7 w-full items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          {collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        </TooltipContent>
-      </Tooltip>
+        </button>
+      </div>
 
       <FeedEditDialog
         open={!!editFeed}
