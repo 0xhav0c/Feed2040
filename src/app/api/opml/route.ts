@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseOpml, generateOpml, flattenOpmlFeeds } from "@/lib/rss/opml";
 import { parseFeed } from "@/lib/rss/parser";
+import { storeNewItems } from "@/lib/rss/refresh";
+import { findOrCreateCategory } from "@/lib/categories";
+import { cacheDel } from "@/lib/redis";
 import { validateFeedUrl } from "@/lib/utils/url-validator";
 
 // POST /api/opml - Import
@@ -28,17 +31,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     for (const feedData of feeds) {
       try {
-        const slug = feedData.category.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "uncategorized";
-
-        let category = await prisma.category.findUnique({
-          where: { slug_userId: { slug, userId: session.user.id } },
-        });
-
-        if (!category) {
-          category = await prisma.category.create({
-            data: { name: feedData.category, slug, userId: session.user.id },
-          });
-        }
+        // Feeds without a folder stay uncategorized (as the streaming import
+        // does) instead of getting a real "Uncategorized" category.
+        const categoryId =
+          feedData.category && feedData.category !== "Uncategorized"
+            ? await findOrCreateCategory(session.user.id, feedData.category)
+            : null;
 
         const existing = await prisma.feed.findUnique({
           where: { url_userId: { url: feedData.url, userId: session.user.id } },
@@ -51,7 +49,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
         const parsed = await parseFeed(feedData.url);
 
-        await prisma.feed.create({
+        const created = await prisma.feed.create({
           data: {
             url: feedData.url,
             title: parsed.title || feedData.title,
@@ -61,20 +59,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             language: parsed.language,
             lastFetched: new Date(),
             userId: session.user.id,
-            categories: { create: { categoryId: category.id } },
-            articles: {
-              create: parsed.items.slice(0, 20).map((item) => ({
-                title: item.title, url: item.url, content: item.content,
-                summary: item.summary, author: item.author, imageUrl: item.imageUrl,
-                publishedAt: item.publishedAt, guid: item.guid,
-              })),
-            },
+            ...(categoryId ? { categories: { create: { categoryId } } } : {}),
           },
+          select: { id: true },
         });
+        await storeNewItems(created.id, parsed.items.slice(0, 20));
         imported++;
       } catch { failed++; }
     }
 
+    if (imported > 0) await cacheDel(`sidebar:${session.user.id}`);
     return NextResponse.json({ data: { total: feeds.length, imported, skipped, failed } });
   } catch (error) {
     console.error("OPML import error:", error);
@@ -91,7 +85,8 @@ export async function GET(): Promise<NextResponse> {
 
   try {
     const feeds = await prisma.feed.findMany({
-      where: { userId: session.user.id },
+      // The read-it-later bucket (feed2040://saved) is not a real feed.
+      where: { userId: session.user.id, isSystem: false },
       include: { categories: { include: { category: true } } },
     });
 

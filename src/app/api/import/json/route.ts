@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseFeed } from "@/lib/rss/parser";
+import { storeNewItems } from "@/lib/rss/refresh";
+import { cacheDel } from "@/lib/redis";
 import { z } from "zod";
 
 const importSchema = z.object({
@@ -113,7 +115,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           }
         }
 
-        await prisma.feed.create({
+        const created = await prisma.feed.create({
           data: {
             url: feedData.url,
             title: feedData.title ?? parsedFeed.title,
@@ -127,26 +129,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               categoryIds.length > 0
                 ? { create: categoryIds.map((categoryId) => ({ categoryId })) }
                 : undefined,
-            articles: {
-              create: parsedFeed.items.slice(0, 50).map((item) => ({
-                title: item.title,
-                url: item.url,
-                content: item.content,
-                summary: item.summary,
-                author: item.author,
-                imageUrl: item.imageUrl,
-                publishedAt: item.publishedAt,
-                guid: item.guid,
-              })),
-            },
           },
+          select: { id: true },
         });
+        await storeNewItems(created.id, parsedFeed.items);
         feedsImported++;
       } catch {
         skipped++;
       }
     }
 
+    if (feedsImported > 0 || categoriesImported > 0) await cacheDel(`sidebar:${session.user.id}`);
     return NextResponse.json({
       data: { feedsImported, categoriesImported, skipped },
     });

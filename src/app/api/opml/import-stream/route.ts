@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseFeed } from "@/lib/rss/parser";
+import { storeNewItems } from "@/lib/rss/refresh";
+import { findOrCreateCategory } from "@/lib/categories";
+import { cacheDel } from "@/lib/redis";
 import { validateFeedUrl } from "@/lib/utils/url-validator";
 
 type FeedInput = {
@@ -48,30 +51,19 @@ export async function POST(req: NextRequest) {
       }
 
       const stats = { success: 0, skipped: 0, failed: 0 };
-      const categoryCache = new Map<string, string>();
+      // Memoise the promise, not the id: concurrent workers asking for the
+      // same new category must share one lookup/creation.
+      const categoryCache = new Map<string, Promise<string>>();
 
-      async function resolveCategory(categoryName: string): Promise<string | null> {
-        if (!categoryName || categoryName === "Uncategorized") return null;
-
-        if (categoryCache.has(categoryName)) return categoryCache.get(categoryName)!;
-
-        const slug = categoryName
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/gi, "-")
-          .replace(/^-|-$/g, "");
-
-        let record = await prisma.category.findUnique({
-          where: { slug_userId: { slug, userId } },
-        });
-
-        if (!record) {
-          record = await prisma.category.create({
-            data: { name: categoryName, slug, userId },
-          });
+      function resolveCategory(categoryName: string): Promise<string | null> {
+        if (!categoryName || categoryName === "Uncategorized") return Promise.resolve(null);
+        let pending = categoryCache.get(categoryName);
+        if (!pending) {
+          pending = findOrCreateCategory(userId, categoryName);
+          categoryCache.set(categoryName, pending);
+          pending.catch(() => categoryCache.delete(categoryName));
         }
-
-        categoryCache.set(categoryName, record.id);
-        return record.id;
+        return pending;
       }
 
       async function processFeed(feed: FeedInput, index: number) {
@@ -115,26 +107,10 @@ export async function POST(req: NextRequest) {
             },
           });
 
-          const items = parsed.items.slice(0, MAX_ARTICLES_PER_FEED);
-          let articleCount = 0;
-
-          if (items.length > 0) {
-            const result = await prisma.article.createMany({
-              data: items.map((item) => ({
-                title: item.title,
-                url: item.url,
-                content: item.content,
-                summary: item.summary,
-                author: item.author,
-                imageUrl: item.imageUrl,
-                publishedAt: item.publishedAt,
-                guid: item.guid,
-                feedId: created.id,
-              })),
-              skipDuplicates: true,
-            });
-            articleCount = result.count;
-          }
+          const articleCount = await storeNewItems(
+            created.id,
+            parsed.items.slice(0, MAX_ARTICLES_PER_FEED)
+          );
 
           stats.success++;
           send({ type: "success", index, title: created.title, articleCount });
@@ -161,6 +137,7 @@ export async function POST(req: NextRequest) {
       );
       await Promise.all(workers);
 
+      if (stats.success > 0) await cacheDel(`sidebar:${userId}`);
       send({ type: "done", stats });
 
       try {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseFeed } from "@/lib/rss/parser";
+import { storeNewItems } from "@/lib/rss/refresh";
+import { cacheDel } from "@/lib/redis";
 import { validateFeedUrl } from "@/lib/utils/url-validator";
 import { z } from "zod";
 
@@ -91,7 +93,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // ignore URL parsing errors
     }
 
-    const feed = await prisma.feed.create({
+    const created = await prisma.feed.create({
       data: {
         url,
         title: parsedFeed.title,
@@ -105,19 +107,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         categories: categoryIds?.length
           ? { create: categoryIds.map((categoryId) => ({ categoryId })) }
           : undefined,
-        articles: {
-          create: parsedFeed.items.slice(0, 50).map((item) => ({
-            title: item.title,
-            url: item.url,
-            content: item.content,
-            summary: item.summary,
-            author: item.author,
-            imageUrl: item.imageUrl,
-            publishedAt: item.publishedAt,
-            guid: item.guid,
-          })),
-        },
       },
+      select: { id: true },
+    });
+
+    // Same insert path as refresh: maps enclosures and tolerates duplicate
+    // guids within the feed (a nested create would fail the whole add).
+    await storeNewItems(created.id, parsedFeed.items);
+
+    const feed = await prisma.feed.findUniqueOrThrow({
+      where: { id: created.id },
       include: {
         _count: { select: { articles: true } },
         categories: {
@@ -126,6 +125,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
     });
 
+    await cacheDel(`sidebar:${session.user.id}`);
     return NextResponse.json({ data: feed }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {

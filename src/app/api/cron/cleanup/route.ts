@@ -21,13 +21,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
-    // Delete articles older than cutoff, excluding bookmarked ones. Use a
-    // relation filter so the exclusion runs in SQL — loading every bookmarked
-    // id into a notIn array breaks down (query size / param limits) at scale.
+    // Delete articles older than the cutoff by publish date (falling back to
+    // insert time), keeping anything the user deliberately kept: bookmarks,
+    // highlights (they cascade with the article) and the read-it-later bucket.
+    // Refresh skips feed items older than the same cutoff, so deleted items
+    // are not re-inserted as new. Relation filters keep the exclusions in SQL.
     const result = await prisma.article.deleteMany({
       where: {
-        createdAt: { lt: cutoffDate },
+        OR: [
+          { publishedAt: { lt: cutoffDate } },
+          { publishedAt: null, createdAt: { lt: cutoffDate } },
+        ],
         bookmarks: { none: {} },
+        highlights: { none: {} },
+        feed: { isSystem: false },
       },
     });
 

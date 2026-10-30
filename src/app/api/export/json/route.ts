@@ -14,7 +14,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     const [feeds, categories, bookmarks] = await Promise.all([
       prisma.feed.findMany({
-        where: { userId: session.user.id },
+        // The read-it-later bucket (feed2040://saved) is not a real feed.
+        where: { userId: session.user.id, isSystem: false },
         include: {
           categories: {
             include: { category: { select: { id: true, slug: true } } },
