@@ -164,38 +164,38 @@ function SettingsContent() {
           </div>
 
           <TabsContent value="general" className="flex-1 overflow-y-auto p-6 mt-0">
-            <div className="mx-auto max-w-5xl">
+            <div className="w-full">
               <GeneralSettings isAdmin={isAdmin} />
             </div>
           </TabsContent>
           <TabsContent value="ai" className="flex-1 overflow-y-auto p-6 mt-0">
-            <div className="mx-auto max-w-5xl">
+            <div className="w-full">
               <AISettingsTab />
             </div>
           </TabsContent>
           <TabsContent value="telegram" className="flex-1 overflow-y-auto p-6 mt-0">
-            <div className="mx-auto max-w-5xl">
+            <div className="w-full">
               <TelegramSettingsTab />
             </div>
           </TabsContent>
           <TabsContent value="notifications" className="flex-1 overflow-y-auto p-6 mt-0">
-            <div className="mx-auto max-w-5xl">
+            <div className="w-full">
               <NotificationRulesTab />
             </div>
           </TabsContent>
           <TabsContent value="data" className="flex-1 overflow-y-auto p-6 mt-0">
-            <div className="mx-auto max-w-5xl">
+            <div className="w-full">
               <DataTab />
             </div>
           </TabsContent>
           <TabsContent value="fever" className="flex-1 overflow-y-auto p-6 mt-0">
-            <div className="mx-auto max-w-5xl">
+            <div className="w-full">
               <FeverApiTab />
             </div>
           </TabsContent>
           {isAdmin && session?.user?.id && (
             <TabsContent value="users" className="flex-1 overflow-y-auto p-6 mt-0">
-              <div className="mx-auto max-w-5xl">
+              <div className="w-full">
                 <UsersAdminTab currentUserId={session.user.id} />
               </div>
             </TabsContent>
@@ -1044,7 +1044,7 @@ function AISettingsTab() {
     );
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-2 2xl:grid-flow-row-dense">
       {/* API Connection */}
       <Card className="rounded-2xl border border-border bg-card">
         <CardContent className="p-6">
@@ -1091,7 +1091,7 @@ function AISettingsTab() {
       </Card>
 
       {/* Model Configuration */}
-      <Card className="rounded-2xl border border-border bg-card">
+      <Card className="rounded-2xl border border-border bg-card 2xl:col-span-2">
         <CardContent className="p-6">
           <SectionTitle icon={Sparkles} title="Model Configuration" description="Select which models to use for different tasks" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1182,7 +1182,7 @@ function AISettingsTab() {
       <SemanticIndexCard />
 
       {/* Scheduled Daily Briefing */}
-      <Card className="rounded-2xl border border-border bg-card">
+      <Card className="rounded-2xl border border-border bg-card 2xl:col-span-2">
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-start gap-3">
@@ -1324,7 +1324,7 @@ function AISettingsTab() {
       </Card>
 
       {/* Save */}
-      <Button onClick={handleSave} disabled={saving} size="lg">
+      <Button onClick={handleSave} disabled={saving} size="lg" className="justify-self-start 2xl:col-span-2">
         {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
         Save AI Settings
       </Button>
@@ -1440,7 +1440,7 @@ function TelegramSettingsTab() {
   const botConfigured = keyInfo?.configured;
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-2">
       <Card className="rounded-2xl border border-border bg-card">
         <CardContent className="p-6">
           <SectionTitle icon={TelegramIcon} title="Bot Token" description="Create a bot via @BotFather on Telegram" />
@@ -1921,7 +1921,7 @@ function DataTab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-2">
       <Card className="rounded-2xl border border-border bg-card">
         <CardContent className="p-6">
           <SectionTitle icon={Upload} title="Import Feeds" description="Import feeds from OPML or JSON backup files" />
