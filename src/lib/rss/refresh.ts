@@ -5,6 +5,8 @@ import { scrapeFullText } from "./scraper";
 
 export interface RefreshResult {
   newArticles: number;
+  /** Ids of the rows this refresh inserted (drives alerts exactly once). */
+  newArticleIds: string[];
   error?: string;
 }
 
@@ -22,13 +24,13 @@ async function retentionCutoff(): Promise<Date | null> {
 /**
  * Insert the not-yet-stored items of a parsed feed. Shared by refresh and by
  * the add/import paths so they dedup, map fields (incl. podcast enclosures)
- * and tolerate duplicate guids the same way.
+ * and tolerate duplicate guids the same way. Returns the inserted ids.
  */
 export async function storeNewItems(
   feedId: string,
   items: ParsedFeedItem[],
   opts: { scrapeFullText?: boolean } = {}
-): Promise<number> {
+): Promise<string[]> {
   const candidates = items.slice(0, 50);
 
   // Items older than the retention window would be deleted by the cleanup job
@@ -77,7 +79,7 @@ export async function storeNewItems(
     return true;
   });
 
-  if (newItems.length === 0) return 0;
+  if (newItems.length === 0) return [];
 
   const itemsData = [];
   for (const item of newItems) {
@@ -102,11 +104,12 @@ export async function storeNewItems(
     });
   }
 
-  const result = await prisma.article.createMany({
+  const created = await prisma.article.createManyAndReturn({
     data: itemsData,
     skipDuplicates: true,
+    select: { id: true },
   });
-  return result.count;
+  return created.map((a: { id: string }) => a.id);
 }
 
 export async function refreshFeed(feed: {
@@ -121,7 +124,7 @@ export async function refreshFeed(feed: {
   scrapeFullText: boolean;
 }): Promise<RefreshResult> {
   const parsed = await parseFeed(feed.url);
-  const createdCount = await storeNewItems(feed.id, parsed.items, {
+  const newArticleIds = await storeNewItems(feed.id, parsed.items, {
     scrapeFullText: feed.scrapeFullText,
   });
 
@@ -154,7 +157,7 @@ export async function refreshFeed(feed: {
     },
   });
 
-  return { newArticles: createdCount };
+  return { newArticles: newArticleIds.length, newArticleIds };
 }
 
 export async function runWithConcurrency<T>(

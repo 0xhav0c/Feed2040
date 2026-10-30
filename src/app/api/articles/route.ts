@@ -108,5 +108,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 function parseDate(value: string | null): Date | null {
   if (!value) return null;
   const d = new Date(value);
-  return isNaN(d.getTime()) ? null : d;
+  if (isNaN(d.getTime())) return null;
+  // The instant comes from the browser clock; a clock running ahead would
+  // otherwise exclude articles read since the view opened.
+  return d.getTime() > Date.now() ? new Date() : d;
 }

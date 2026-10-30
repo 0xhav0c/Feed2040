@@ -7,6 +7,8 @@ interface DigestUserContext {
   userId: string;
   chatId: string;
   language: string;
+  /** Only reuse a digest created at/after this instant; otherwise generate. */
+  notBefore?: Date;
 }
 
 function esc(text: string): string {
@@ -78,7 +80,7 @@ export type SendDigestResult = "sent" | "no-articles" | "ai-failed" | "send-fail
 export async function buildAndSendDigest(
   ctx: DigestUserContext
 ): Promise<SendDigestResult> {
-  const { userId, chatId, language } = ctx;
+  const { userId, chatId, language, notBefore } = ctx;
   const date = await userTodayKey(userId);
 
   const latestDigest = await prisma.digest.findFirst({
@@ -86,6 +88,7 @@ export async function buildAndSendDigest(
       userId,
       date,
       source: { in: ["web", "scheduled", "telegram"] },
+      ...(notBefore ? { createdAt: { gte: notBefore } } : {}),
     },
     orderBy: { createdAt: "desc" },
   });

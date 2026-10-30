@@ -46,9 +46,9 @@ export async function POST(): Promise<Response> {
         let updated = 0;
         let failed = 0;
         let newArticles = 0;
+        const newArticleIds: string[] = [];
         const total = feeds.length;
 
-        const refreshStartedAt = new Date();
         send({ type: "start", total });
 
         for (let i = 0; i < feeds.length; i++) {
@@ -62,6 +62,7 @@ export async function POST(): Promise<Response> {
           try {
             const result = await refreshFeed(feed);
             newArticles += result.newArticles;
+        newArticleIds.push(...result.newArticleIds);
             updated++;
             send({ type: "progress", current: i + 1, total, feed: feed.title || feed.url, status: "ok", feedNewArticles: result.newArticles, newArticles, updated, failed });
           } catch (err) {
@@ -79,7 +80,7 @@ export async function POST(): Promise<Response> {
 
         if (updated > 0) await cacheDel("sidebar:*");
         if (newArticles > 0) {
-          await runPostRefreshAlerts(feeds.map((f) => f.id), refreshStartedAt, userId);
+          await runPostRefreshAlerts(newArticleIds);
         }
         send({ type: "complete", totalFeeds: total, updated, failed, newArticles });
       } catch (error) {

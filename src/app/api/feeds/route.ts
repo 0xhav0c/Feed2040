@@ -113,7 +113,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // Same insert path as refresh: maps enclosures and tolerates duplicate
     // guids within the feed (a nested create would fail the whole add).
-    await storeNewItems(created.id, parsedFeed.items);
+    try {
+      await storeNewItems(created.id, parsedFeed.items);
+    } catch (err) {
+      // Don't leave a half-added feed behind (a retry would then report
+      // "already added").
+      await prisma.feed.delete({ where: { id: created.id } }).catch(() => {});
+      throw err;
+    }
 
     const feed = await prisma.feed.findUniqueOrThrow({
       where: { id: created.id },

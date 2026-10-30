@@ -62,16 +62,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let updated = 0;
     let failed = 0;
     let newArticles = 0;
+    const newArticleIds: string[] = [];
 
     // Delegate to the shared refreshFeed() so behaviour (URL-based dedup,
     // full-text scraping, accurate insert counts, favicon derivation) matches
     // the cron path exactly. A manual refresh deliberately retries every feed —
     // no permanent errorCount exclusion — so users can recover failing feeds.
-    const refreshStartedAt = new Date();
     await runWithConcurrency(feeds, 5, async (feed) => {
       try {
         const result = await refreshFeed(feed);
         newArticles += result.newArticles;
+        newArticleIds.push(...result.newArticleIds);
         updated++;
       } catch (err) {
         failed++;
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (updated > 0) await cacheDel("sidebar:*");
     if (newArticles > 0) {
-      await runPostRefreshAlerts(feeds.map((f) => f.id), refreshStartedAt, session.user.id);
+      await runPostRefreshAlerts(newArticleIds);
     }
     return NextResponse.json({
       data: { totalFeeds: feeds.length, updated, failed, newArticles },

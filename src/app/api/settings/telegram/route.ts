@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-import { isValidTimezone } from "@/lib/timezone";
+import { isValidTimezone, resolveTimezone } from "@/lib/timezone";
+import { latestDueSlot } from "@/lib/schedule";
 
 const telegramSettingsSchema = z.object({
   isActive: z.boolean().optional(),
@@ -75,6 +76,11 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
         ...(data.isActive !== undefined && { isActive: data.isActive }),
         ...(data.scheduleTimes !== undefined && {
           scheduleTimes: data.scheduleTimes,
+          // Treat slots already past today as done, so saving a schedule in
+          // the evening doesn't immediately send a "catch-up" briefing.
+          lastDigestSentDate:
+            latestDueSlot(data.scheduleTimes, resolveTimezone(data.timezone ?? existing.timezone))?.key ??
+            existing.lastDigestSentDate,
         }),
         ...(data.timezone !== undefined && { timezone: data.timezone }),
         ...(data.summaryCategories !== undefined && {

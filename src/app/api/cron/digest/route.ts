@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildAndSendDigest } from "@/lib/telegram/digest-builder";
 import { verifyCronAuth } from "@/lib/cron-auth";
-import { latestDueSlot, recordFailedAttempt, shouldAttempt } from "@/lib/schedule";
+import { latestDueSlot, previousSlotAt, recordFailedAttempt, shouldAttempt } from "@/lib/schedule";
 import { resolveTimezone } from "@/lib/timezone";
 
 const inProgressUsers = new Set<string>();
+
+// When the web briefing is scheduled for (about) the same time, give it this
+// long to produce the digest instead of running the AI pipeline twice.
+const WAIT_FOR_WEB_BRIEFING_MS = 20 * 60_000;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!verifyCronAuth(req)) {
@@ -38,6 +42,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const attemptKey = `tg:${ts.userId}:${due.key}`;
       if (!shouldAttempt(attemptKey)) continue;
 
+      const ai = ts.user.aiSettings;
+      if (ai?.briefingEnabled && ai.briefingTimes?.length) {
+        const webDue = latestDueSlot(ai.briefingTimes, resolveTimezone(ai.briefingTimezone), now);
+        if (webDue && now.getTime() - webDue.at.getTime() < WAIT_FOR_WEB_BRIEFING_MS) {
+          const ready = await prisma.digest.count({
+            where: { userId: ts.userId, source: "scheduled", createdAt: { gte: webDue.at } },
+          });
+          if (ready === 0) continue; // web briefing still generating; next tick
+        }
+      }
+
       inProgressUsers.add(ts.userId);
       try {
         // Claim the slot before the (slow, multi-message) send so an
@@ -51,6 +66,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           userId: ts.userId,
           chatId: ts.chatId,
           language: ts.user.aiSettings?.language || "en",
+          // A later slot must not resend the morning's digest: only reuse one
+          // made since the previous slot, otherwise generate a fresh one.
+          notBefore: previousSlotAt(ts.scheduleTimes, tz, due) ?? undefined,
         });
 
         if (result === "sent") {

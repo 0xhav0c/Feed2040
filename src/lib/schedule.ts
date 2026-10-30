@@ -28,6 +28,18 @@ export function latestDueSlot(times: string[], tz: string, now: Date = new Date(
   return { slot, at: zonedTimeToUtc(tz, now, h, min), key: `${dateKeyInTz(tz, now)} ${slot}` };
 }
 
+/** UTC instant of the slot before `due` on the same local day, if any. */
+export function previousSlotAt(times: string[], tz: string, due: DueSlot): Date | null {
+  const dueMin = parseSlot(due.slot)!;
+  let best: number | null = null;
+  for (const t of times) {
+    const m = parseSlot(t);
+    if (m !== null && m < dueMin && (best === null || m > best)) best = m;
+  }
+  if (best === null) return null;
+  return zonedTimeToUtc(tz, due.at, Math.floor(best / 60), best % 60);
+}
+
 // Failed slot attempts, kept in memory so a broken AI provider is retried a
 // few times with spacing instead of on every one-minute cron tick.
 const attempts = new Map<string, { count: number; last: number }>();

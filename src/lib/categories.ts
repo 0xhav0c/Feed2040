@@ -29,14 +29,26 @@ export async function findOrCreateCategory(userId: string, name: string): Promis
   });
   if (byName) return byName.id;
 
-  const slug = slugify(trimmed) || "category";
-  const record = await prisma.category.upsert({
-    where: { slug_userId: { slug, userId } },
-    create: { name: trimmed, slug, userId },
-    update: {},
-    select: { id: true },
-  });
-  return record.id;
+  // Different names can share a slug ("C++"/"C#", "Ag"/"Ağ"), so create
+  // with a free slug instead of upserting onto someone else's category. On a
+  // concurrent create of the same name, the loser re-reads the winner's row.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const record = await prisma.category.create({
+        data: { name: trimmed, slug: await uniqueSlug(userId, trimmed), userId },
+        select: { id: true },
+      });
+      return record.id;
+    } catch (err) {
+      if ((err as { code?: string }).code !== "P2002") throw err;
+      const existing = await prisma.category.findFirst({
+        where: { userId, name: { equals: trimmed, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (existing) return existing.id;
+    }
+  }
+  throw new Error(`Could not create category "${trimmed}"`);
 }
 
 /**

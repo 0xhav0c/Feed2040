@@ -9,7 +9,7 @@ const inProgressUsers = new Set<string>();
 
 // Older builds fired up to two minutes before the slot; treat a digest created
 // that close to the slot as belonging to it.
-const SLOT_EARLY_MARGIN_MS = 10 * 60_000;
+const SLOT_EARLY_MARGIN_MS = 3 * 60_000;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!verifyCronAuth(req)) {

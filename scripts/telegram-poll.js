@@ -13,6 +13,7 @@ const TELEGRAM_API = "https://api.telegram.org/bot";
 const STARTUP_DELAY_MS = 20000;
 const RETRY_DELAY_MS = 30000;
 const TOKEN_RECHECK_MS = 60000;
+const INVALID_TOKEN_RETRY_MS = 15 * 60000;
 
 let running = true;
 
@@ -73,8 +74,8 @@ async function pollLoop(token, state) {
 
       if (!res.ok) {
         if (res.status === 401 || res.status === 404) {
-          console.error("[Telegram] Invalid bot token, stopping poller");
-          return;
+          console.error(`[Telegram] Invalid bot token …${token.slice(-4)}, pausing poller`);
+          return "invalid";
         }
         await sleep(5000);
         continue;
@@ -104,9 +105,10 @@ function startPoller(token) {
   pollers.set(token, state);
   (async () => {
     while (running && !state.stopped) {
-      await pollLoop(token, state);
-      // pollLoop returns on an invalid token or when stopped; retry later.
-      if (!state.stopped) await sleep(RETRY_DELAY_MS);
+      const outcome = await pollLoop(token, state);
+      // pollLoop returns on an invalid token or when stopped; retry later —
+      // much later for a rejected token so it doesn't spam the log.
+      if (!state.stopped) await sleep(outcome === "invalid" ? INVALID_TOKEN_RETRY_MS : RETRY_DELAY_MS);
     }
   })().catch((err) => console.error("[Telegram] Poller crashed:", err.message));
 }

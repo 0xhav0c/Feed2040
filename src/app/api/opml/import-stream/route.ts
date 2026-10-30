@@ -107,10 +107,9 @@ export async function POST(req: NextRequest) {
             },
           });
 
-          const articleCount = await storeNewItems(
-            created.id,
-            parsed.items.slice(0, MAX_ARTICLES_PER_FEED)
-          );
+          const articleCount = (
+            await storeNewItems(created.id, parsed.items.slice(0, MAX_ARTICLES_PER_FEED))
+          ).length;
 
           stats.success++;
           send({ type: "success", index, title: created.title, articleCount });

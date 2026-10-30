@@ -3,32 +3,30 @@ import { getBot } from "@/lib/telegram/bot";
 import { sendPushToUser } from "@/lib/push";
 
 /**
- * Run the rule engine and saved-search monitors over articles inserted since
- * `since` in the given feeds. Called after every refresh (cron and manual) so
- * articles pulled in by the Refresh button get the same actions and alerts.
+ * Run the rule engine and saved-search monitors over the articles a refresh
+ * just inserted. Called after every refresh (cron and manual) so articles
+ * pulled in by the Refresh button get the same actions and alerts. Keyed by
+ * the inserted ids, not a time window, so overlapping cron/manual runs never
+ * alert twice on the same article.
  */
-export async function runPostRefreshAlerts(
-  feedIds: string[],
-  since: Date,
-  userId?: string
-): Promise<void> {
+export async function runPostRefreshAlerts(articleIds: string[]): Promise<void> {
+  if (articleIds.length === 0) return;
   try {
-    await checkNotificationRules(feedIds, since);
+    await checkNotificationRules(articleIds);
   } catch (err) {
     console.error("[Refresh] Notification check error:", err);
   }
   try {
-    await checkSavedSearches(since, userId);
+    await checkSavedSearches(articleIds);
   } catch (err) {
     console.error("[Refresh] Saved-search monitor error:", err);
   }
 }
 
-async function checkNotificationRules(feedIds: string[], since: Date) {
+async function checkNotificationRules(articleIds: string[]) {
   const recentArticles = await prisma.article.findMany({
     where: {
-      feedId: { in: feedIds },
-      createdAt: { gte: since },
+      id: { in: articleIds },
     },
     select: { id: true, title: true, url: true, summary: true, feed: { select: { userId: true } } },
   });
@@ -132,11 +130,16 @@ async function checkNotificationRules(feedIds: string[], since: Date) {
 }
 
 // Saved-search monitoring: alert (Telegram) when new articles match a user's
-// monitored search. Only new articles (createdAt >= since) are considered, so
+// monitored search. Only the articles this refresh inserted are considered, so
 // each match notifies exactly once.
-async function checkSavedSearches(since: Date, userId?: string) {
+async function checkSavedSearches(articleIds: string[]) {
+  const owners = await prisma.feed.findMany({
+    where: { articles: { some: { id: { in: articleIds } } } },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
   const searches = await prisma.savedSearch.findMany({
-    where: { notify: true, ...(userId ? { userId } : {}) },
+    where: { notify: true, userId: { in: owners.map((o: { userId: string }) => o.userId) } },
   });
   if (searches.length === 0) return;
 
@@ -149,7 +152,7 @@ async function checkSavedSearches(since: Date, userId?: string) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
-      createdAt: { gte: since },
+      id: { in: articleIds },
       feed: { userId: s.userId, isSystem: false },
       OR: [
         { title: { contains: q, mode: "insensitive" } },

@@ -19,13 +19,10 @@ function LoginForm() {
   const [error, setError] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Only same-site paths: "//evil.example" or "https://…" would send the user
+  // Only same-origin targets: "//evil.example", "https://…" or tricks like
+  // "/\t/evil.example" (URL parsing strips the tab) would send the user
   // off-site right after they authenticate.
-  const rawCallback = searchParams.get("callbackUrl") || "";
-  const callbackUrl =
-    rawCallback.startsWith("/") && !rawCallback.startsWith("//") && !rawCallback.startsWith("/\\")
-      ? rawCallback
-      : "/feeds";
+  const callbackUrl = safeCallback(searchParams.get("callbackUrl"));
 
   // Check if setup is needed on mount
   useEffect(() => {
@@ -206,4 +203,15 @@ export default function LoginPage() {
       </div>
     </div>
   );
+}
+
+function safeCallback(raw: string | null): string {
+  if (!raw || typeof window === "undefined") return "/feeds";
+  try {
+    const u = new URL(raw, window.location.origin);
+    if (u.origin !== window.location.origin) return "/feeds";
+    return u.pathname + u.search + u.hash;
+  } catch {
+    return "/feeds";
+  }
 }

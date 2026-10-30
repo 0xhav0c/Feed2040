@@ -6,8 +6,8 @@ import { refreshFeed, runWithConcurrency } from "@/lib/rss/refresh";
 import { runPostRefreshAlerts } from "@/lib/rss/alerts";
 
 // The worker gives up waiting after a few minutes and schedules the next run
-// while a slow one (full-text scraping) may still be going; overlapping runs
-// would alert twice on the same new articles.
+// while a slow one (full-text scraping) may still be going; don't start a
+// second pass over every feed on top of it.
 let refreshRunning = false;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -46,9 +46,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     let newArticles = 0;
+    const newArticleIds: string[] = [];
     let updated = 0;
     let failed = 0;
-    const refreshStartedAt = new Date();
     const now = Date.now();
     const feedsToRefresh = feeds.filter((feed) => {
       // Regular per-feed cadence
@@ -72,6 +72,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       try {
         const result = await refreshFeed(feed);
         newArticles += result.newArticles;
+        newArticleIds.push(...result.newArticleIds);
         updated++;
       } catch (err) {
         failed++;
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
 
     if (newArticles > 0) {
-      await runPostRefreshAlerts(feedsToRefresh.map((f) => f.id), refreshStartedAt);
+      await runPostRefreshAlerts(newArticleIds);
     }
 
     return NextResponse.json({
