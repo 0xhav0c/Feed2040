@@ -166,8 +166,8 @@ export default function SetupPage() {
       <div className="relative w-full max-w-lg">
         {/* Hero */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-xl shadow-primary/25">
-            <Rss className="h-8 w-8 text-primary-foreground" />
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand to-signal shadow-xl shadow-brand/30">
+            <Rss className="h-8 w-8 text-white" aria-hidden />
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Welcome to Feed2040</h1>
           <p className="mt-2 text-muted-foreground">
@@ -277,7 +277,7 @@ export default function SetupPage() {
               <Button
                 type="submit"
                 disabled={step === "creating"}
-                className="flex w-full items-center justify-center gap-2 rounded-xl py-3 font-bold shadow-lg shadow-primary/20"
+                className="flex w-full items-center justify-center gap-2 rounded-xl py-3 font-bold shadow-lg shadow-brand/20"
               >
                 {step === "creating" ? (
                   <>

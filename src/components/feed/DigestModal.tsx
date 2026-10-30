@@ -142,15 +142,15 @@ export function DigestModal({ open, onClose }: DigestModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-              <Sparkles size={18} className="text-primary" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-signal">
+              <Sparkles size={18} className="text-white" aria-hidden />
             </div>
             <div>
               <h2 className="font-bold text-foreground">AI-Powered Daily Briefing</h2>
               <p className="text-[11px] text-muted-foreground">Generate intelligent summaries from your feeds</p>
             </div>
           </div>
-          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+          <button onClick={onClose} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -216,7 +216,7 @@ export function DigestModal({ open, onClose }: DigestModalProps) {
             <button
               onClick={() => generate(hours)}
               disabled={loading}
-              className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
+              className="flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-medium text-brand-foreground hover:bg-brand/90 disabled:opacity-50 transition-all"
             >
               {loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
               {loading ? "Generating..." : "Generate Briefing"}

@@ -438,6 +438,7 @@ export default function BriefingPage() {
                         variant={hours === opt.value ? "default" : "outline"}
                         size="sm"
                         onClick={() => setHours(opt.value)}
+                        aria-pressed={hours === opt.value}
                         className="text-xs"
                       >
                         {opt.label}
@@ -500,6 +501,7 @@ export default function BriefingPage() {
                       onClick={() => generate(true)}
                       disabled={loading}
                       title="Regenerate (skip cache)"
+                      aria-label="Regenerate (skip cache)"
                     >
                       <RefreshCw size={16} />
                     </Button>

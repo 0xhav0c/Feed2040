@@ -54,8 +54,8 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/25">
-            <Rss className="h-7 w-7 text-primary-foreground" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand to-signal shadow-xl shadow-brand/30">
+            <Rss className="h-7 w-7 text-white" aria-hidden />
           </div>
           <h1 className="text-2xl font-bold">Create Account</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -119,7 +119,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-semibold text-brand-foreground hover:bg-brand/90 disabled:opacity-50"
           >
             {loading ? (
               <Loader2 size={16} className="animate-spin" />

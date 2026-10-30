@@ -6,7 +6,6 @@ import {
   Sparkles,
   FileQuestion,
   AlertTriangle,
-  Newspaper,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,34 +35,29 @@ type DigestViewProps = {
 
 const IMPACT_CONFIG: Record<
   string,
-  { emoji: string; label: string; className: string; badgeClass: string }
+  { label: string; className: string; badgeClass: string }
 > = {
   critical: {
-    emoji: "🔴",
     label: "CRITICAL",
     className: "border-l-red-500",
     badgeClass: "bg-red-500/10 text-red-600 dark:text-red-400",
   },
   high: {
-    emoji: "🟠",
     label: "HIGH",
     className: "border-l-orange-500",
     badgeClass: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
   },
   medium: {
-    emoji: "🟡",
     label: "MEDIUM",
     className: "border-l-yellow-500",
     badgeClass: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
   },
   low: {
-    emoji: "🔵",
     label: "LOW",
     className: "border-l-blue-500",
     badgeClass: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   },
   info: {
-    emoji: "⚪",
     label: "INFO",
     className: "border-l-slate-400",
     badgeClass: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
@@ -126,8 +120,8 @@ export function DigestView({ results, loading, error }: DigestViewProps) {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-          <Newspaper size={20} className="text-primary" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-signal">
+          <Sparkles size={18} className="text-white" aria-hidden />
         </div>
         <div>
           <h2 className="text-lg font-bold text-foreground">Daily Briefing</h2>
@@ -140,8 +134,7 @@ export function DigestView({ results, loading, error }: DigestViewProps) {
         <div key={sIdx} className="space-y-4">
           {/* Section Header */}
           <div className="flex items-center gap-2">
-            <span className="text-lg">{"📌"}</span>
-            <h3 className="text-sm font-bold uppercase tracking-wide text-foreground">
+            <h3 className="text-[13px] font-semibold uppercase tracking-wide text-foreground">
               {section.categoryName}
             </h3>
             <span className="rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -166,7 +159,6 @@ export function DigestView({ results, loading, error }: DigestViewProps) {
                 >
                   <CardContent className="pt-4">
                     <div className="flex items-start gap-2">
-                      <span className="mt-0.5 text-sm shrink-0">{config.emoji}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="font-semibold text-sm text-foreground leading-snug">
@@ -191,7 +183,7 @@ export function DigestView({ results, loading, error }: DigestViewProps) {
                               href={item.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline ml-auto shrink-0"
+                              className="ml-auto inline-flex min-h-6 shrink-0 items-center gap-1 text-[11px] font-medium text-primary hover:underline"
                             >
                               <ExternalLink size={10} /> Source
                             </a>
@@ -208,8 +200,8 @@ export function DigestView({ results, loading, error }: DigestViewProps) {
       ))}
 
       {/* Footer Stats */}
-      <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3">
-        <Sparkles size={14} className="text-primary" />
+      <div className="ai-surface flex items-center gap-2 rounded-xl px-4 py-3">
+        <Sparkles size={14} className="text-signal" aria-hidden />
         <p className="text-xs text-muted-foreground">
           <span className="font-semibold text-foreground">{totalArticles}</span> articles scanned
           {totalFiltered > 0 && (
