@@ -53,3 +53,6 @@ next-env.d.ts
 # local DB dumps and design notes
 /backups/
 /design-system/
+
+# host-specific compose settings (bind address, local hostnames)
+docker-compose.override.yml
