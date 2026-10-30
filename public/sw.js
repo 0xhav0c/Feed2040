@@ -1,10 +1,12 @@
-const CACHE_NAME = "feed2040-v4";
-const STATIC_ASSETS = ["/feeds", "/bookmarks", "/briefing", "/settings"];
+// Static build assets (immutable, hashed) and visited pages live in separate
+// caches: pages hold per-user content, so they are capped and wiped on logout.
+const STATIC_CACHE = "feed2040-static-v5";
+const PAGES_CACHE = "feed2040-pages-v5";
+const MAX_PAGES = 30;
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
+self.addEventListener("install", () => {
+  // No precache: /feeds etc. need a session, so precaching while logged out
+  // would store the login redirect and serve it as the offline page.
   self.skipWaiting();
 });
 
@@ -12,12 +14,27 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+        keys
+          .filter((k) => k !== STATIC_CACHE && k !== PAGES_CACHE)
+          .map((k) => caches.delete(k))
       )
     )
   );
   self.clients.claim();
 });
+
+// The app posts this on sign-out so the next user can't read cached pages.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "clear-user-cache") {
+    event.waitUntil(caches.delete(PAGES_CACHE));
+  }
+});
+
+async function trimPages() {
+  const cache = await caches.open(PAGES_CACHE);
+  const keys = await cache.keys();
+  for (let i = 0; i < keys.length - MAX_PAGES; i++) await cache.delete(keys[i]);
+}
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
@@ -46,9 +63,9 @@ self.addEventListener("fetch", (event) => {
         (cached) =>
           cached ||
           fetch(request).then((response) => {
-            if (response.ok) {
+            if (response.ok && !response.redirected) {
               const clone = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+              caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
             }
             return response;
           })
@@ -57,21 +74,31 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Only full page navigations get the offline treatment; RSC payloads
+  // (?_rsc=), /_next/image and other fetches go straight to the network.
+  if (request.mode !== "navigate") return;
+
   // Pages: network-first with offline fallback
   event.respondWith(
     fetch(request)
       .then((response) => {
-        if (response.ok) {
+        // A redirected response (e.g. to /login) can't be replayed for a
+        // navigation, and must never stand in for the real page.
+        if (response.ok && !response.redirected) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          caches
+            .open(PAGES_CACHE)
+            .then((cache) => cache.put(request, clone))
+            .then(trimPages)
+            .catch(() => {});
         }
         return response;
       })
       .catch(() =>
-        caches.match(request).then(
+        caches.match(request, { cacheName: PAGES_CACHE }).then(
           (cached) =>
             cached ||
-            caches.match("/feeds").then(
+            caches.match("/feeds", { cacheName: PAGES_CACHE }).then(
               (fallback) =>
                 fallback ||
                 new Response(

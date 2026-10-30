@@ -19,7 +19,13 @@ function LoginForm() {
   const [error, setError] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/feeds";
+  // Only same-site paths: "//evil.example" or "https://…" would send the user
+  // off-site right after they authenticate.
+  const rawCallback = searchParams.get("callbackUrl") || "";
+  const callbackUrl =
+    rawCallback.startsWith("/") && !rawCallback.startsWith("//") && !rawCallback.startsWith("/\\")
+      ? rawCallback
+      : "/feeds";
 
   // Check if setup is needed on mount
   useEffect(() => {

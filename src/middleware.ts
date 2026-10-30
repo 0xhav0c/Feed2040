@@ -62,7 +62,8 @@ export function middleware(req: NextRequest): NextResponse {
 
   if (!sessionToken) {
     const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
+    // Keep the query too (e.g. the bookmarklet's ?saved=1&saveUrl=…).
+    loginUrl.searchParams.set("callbackUrl", pathname + req.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 
