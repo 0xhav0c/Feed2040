@@ -81,6 +81,22 @@ function parseDate(iso: string | undefined): Date | null {
   return d;
 }
 
+// Item links are rendered as anchors and opened with window.open, so only
+// http(s) may pass; relative links are resolved against the site/feed URL.
+function safeItemUrl(link: string | undefined, base: string): string {
+  const trimmed = link?.trim();
+  if (!trimmed) return "";
+  // Keep absolute links byte-for-byte so URL dedup still matches stored rows.
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return "";
+  try {
+    const u = new URL(trimmed, base);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
 export async function parseFeed(url: string): Promise<ParsedFeed> {
   const validation = validateFeedUrl(url);
   if (!validation.valid) {
@@ -96,11 +112,12 @@ export async function parseFeed(url: string): Promise<ParsedFeed> {
     headers: { "User-Agent": "Feed2040/1.0 RSS Reader" },
   });
   const feed = await parser.parseString(text);
+  const linkBase = safeItemUrl(str(feed.link), url) || url;
 
   return {
     title: str(feed.title) || url,
     description: str(feed.description) || null,
-    siteUrl: str(feed.link) || null,
+    siteUrl: safeItemUrl(str(feed.link), url) || null,
     imageUrl: str(feed.image?.url) || null,
     language: str(feed.language) || null,
     items: (feed.items || []).map((item) => {
@@ -116,7 +133,7 @@ export async function parseFeed(url: string): Promise<ParsedFeed> {
 
       return {
         title: str(item.title) || "Untitled",
-        url: cleanTrackingParams(str(item.link) || ""),
+        url: cleanTrackingParams(safeItemUrl(str(item.link), linkBase)),
         content,
         summary: str(item.contentSnippet)?.slice(0, 500) || null,
         author: str(item.creator) || str(raw.author) || null,

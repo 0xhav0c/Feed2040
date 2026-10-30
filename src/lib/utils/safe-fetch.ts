@@ -50,9 +50,30 @@ async function resolvePublicIp(hostname: string): Promise<string> {
   return addrs[0].address;
 }
 
-async function readCapped(res: Response, maxBytes: number): Promise<string> {
+// Pick the body's charset: Content-Type header, then the XML declaration or
+// an HTML <meta> tag, then UTF-8. Decoding everything as UTF-8 turned
+// ISO-8859-9 / windows-1254 (Turkish) feeds into U+FFFD garbage.
+export function decodeBody(buf: Buffer, contentType: string): string {
+  let charset = /charset\s*=\s*["']?([\w.:-]+)/i.exec(contentType)?.[1];
+  if (!charset) {
+    const head = buf.subarray(0, 2048).toString("latin1");
+    charset =
+      /^\s*<\?xml[^>]*encoding\s*=\s*["']([\w.:-]+)["']/i.exec(head)?.[1] ??
+      /<meta[^>]+charset\s*=\s*["']?([\w.:-]+)/i.exec(head)?.[1];
+  }
+  if (charset && !/^utf-?8$/i.test(charset)) {
+    try {
+      return new TextDecoder(charset.toLowerCase()).decode(buf);
+    } catch {
+      // Unknown label — fall back to UTF-8.
+    }
+  }
+  return buf.toString("utf-8");
+}
+
+async function readCapped(res: Response, maxBytes: number): Promise<Buffer> {
   const reader = res.body?.getReader();
-  if (!reader) return "";
+  if (!reader) return Buffer.alloc(0);
   const chunks: Uint8Array[] = [];
   let total = 0;
   while (true) {
@@ -67,7 +88,7 @@ async function readCapped(res: Response, maxBytes: number): Promise<string> {
       chunks.push(value);
     }
   }
-  return Buffer.concat(chunks).toString("utf-8");
+  return Buffer.concat(chunks);
 }
 
 /**
@@ -130,7 +151,7 @@ export async function safeFetchText(
       }
 
       const contentType = res.headers.get("content-type") || "";
-      const text = await readCapped(res, maxBytes);
+      const text = decodeBody(await readCapped(res, maxBytes), contentType);
       await dispatcher.close();
       return { url: currentUrl, text, contentType };
     } finally {

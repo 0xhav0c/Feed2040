@@ -15,10 +15,17 @@ const BLOCKED_HOSTNAMES = new Set([
 export function isPrivateIP(hostname: string): boolean {
   const stripped = hostname.replace(/^\[|\]$/g, "").toLowerCase();
 
+  // These heuristics apply to IP literals only — run on hostnames they
+  // rejected real domains such as fcc.gov, fd.nl or 01net.com.
+  const isIpv6Literal = stripped.includes(":");
+  const isNumericHost = /^[0-9a-fx.]+$/i.test(stripped) && /^[0-9]/.test(stripped);
+
   // Block octal (0177.0.0.1), hex (0x7f.0.0.1), and decimal (2130706433) IP formats
-  if (/^0x[0-9a-f]+$/i.test(stripped)) return true;
-  if (/^[0-9]+$/.test(stripped) && !stripped.includes(".")) return true;
-  if (/^0[0-7]/.test(stripped)) return true;
+  if (isNumericHost) {
+    if (/^0x[0-9a-f]+$/i.test(stripped)) return true;
+    if (/^[0-9]+$/.test(stripped)) return true;
+    if (stripped.split(".").some((part) => /^0x/i.test(part) || /^0[0-7]+$/.test(part))) return true;
+  }
 
   // IPv4 private ranges
   const ipv4Match = stripped.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
@@ -33,10 +40,11 @@ export function isPrivateIP(hostname: string): boolean {
   }
 
   // IPv6 private ranges
-  if (stripped === "::1") return true;
-  if (stripped.startsWith("fc") || stripped.startsWith("fd")) return true;
-  if (stripped.startsWith("fe80")) return true;
-  if (stripped === "::") return true;
+  if (isIpv6Literal) {
+    if (stripped === "::1" || stripped === "::") return true;
+    if (stripped.startsWith("fc") || stripped.startsWith("fd")) return true;
+    if (stripped.startsWith("fe80")) return true;
+  }
 
   // IPv4-mapped IPv6 (::ffff:127.0.0.1, ::ffff:10.0.0.1, etc.)
   const mappedMatch = stripped.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
