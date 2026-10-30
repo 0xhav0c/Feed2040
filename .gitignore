@@ -49,3 +49,7 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# local DB dumps and design notes
+/backups/
+/design-system/
