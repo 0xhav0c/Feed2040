@@ -58,10 +58,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const user = await authenticateApiKey(apiKey);
   const authOk = !!user;
 
-  if (url.searchParams.has("api")) {
-    return json({ api_version: 3, auth: authOk ? 1 : 0 });
-  }
-
+  // Per the Fever spec every call carries "?api" alongside the action
+  // ("?api&items&since_id=0"), so "api" must not short-circuit the request: a
+  // bare "?api" auth check simply falls through to the final `json(base)`.
   if (!authOk || !user) {
     return json({ api_version: 3, auth: 0 });
   }
@@ -193,7 +192,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         is_read: readSet.has(a.id) ? 1 : 0,
         created_on_time: Math.floor((a.publishedAt || a.createdAt).getTime() / 1000),
       })),
-      total_items: articles.length,
+      total_items: await prisma.article.count({ where: { feed: { userId: user.id } } }),
     });
   }
 
@@ -226,7 +225,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
   }
 
-  const mark = url.searchParams.get("mark");
+  const mark = param("mark");
   const asParam = param("as");
   const id = param("id");
 
@@ -287,20 +286,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
       }
     } else if (mark === "group" && asParam === "read") {
-      const categories = await prisma.category.findMany({
-        where: { userId: user.id },
-        select: { id: true },
-      });
-      const category = categories.find((c) => hashId(c.id) === numericId);
+      const beforeStr = param("before");
+      const before = beforeStr ? new Date(parseInt(beforeStr, 10) * 1000) : new Date();
 
-      if (category) {
-        const beforeStr = param("before");
-        const before = beforeStr ? new Date(parseInt(beforeStr, 10) * 1000) : new Date();
+      // Group 0 is Fever's "Kindling" (every feed) and -1 is "Sparks"; clients
+      // send id=0 for "mark all as read".
+      let feedScope: Record<string, unknown> | null = null;
+      if (numericId === 0 || numericId === -1) {
+        feedScope = { userId: user.id };
+      } else {
+        const categories = await prisma.category.findMany({
+          where: { userId: user.id },
+          select: { id: true },
+        });
+        const category = categories.find((c) => hashId(c.id) === numericId);
+        if (category) {
+          feedScope = { userId: user.id, categories: { some: { categoryId: category.id } } };
+        }
+      }
 
+      if (feedScope) {
         const articles = await prisma.article.findMany({
           where: {
-            feed: { categories: { some: { categoryId: category.id } } },
+            feed: feedScope,
             createdAt: { lte: before },
+            readArticles: { none: { userId: user.id } },
           },
           select: { id: true },
         });
