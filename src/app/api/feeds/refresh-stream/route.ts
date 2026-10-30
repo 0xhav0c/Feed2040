@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cacheDel } from "@/lib/redis";
 import { refreshFeed } from "@/lib/rss/refresh";
+import { runPostRefreshAlerts } from "@/lib/rss/alerts";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 export async function POST(): Promise<Response> {
@@ -47,6 +48,7 @@ export async function POST(): Promise<Response> {
         let newArticles = 0;
         const total = feeds.length;
 
+        const refreshStartedAt = new Date();
         send({ type: "start", total });
 
         for (let i = 0; i < feeds.length; i++) {
@@ -65,15 +67,20 @@ export async function POST(): Promise<Response> {
           } catch (err) {
             failed++;
             const errorMsg = err instanceof Error ? err.message : "Unknown error";
-            await prisma.feed.update({
-              where: { id: feed.id },
-              data: { fetchError: errorMsg, errorCount: { increment: 1 } },
-            });
+            await prisma.feed
+              .update({
+                where: { id: feed.id },
+                data: { fetchError: errorMsg, errorCount: { increment: 1 } },
+              })
+              .catch(() => {});
             send({ type: "progress", current: i + 1, total, feed: feed.title || feed.url, status: "error", error: errorMsg, newArticles, updated, failed });
           }
         }
 
         if (updated > 0) await cacheDel("sidebar:*");
+        if (newArticles > 0) {
+          await runPostRefreshAlerts(feeds.map((f) => f.id), refreshStartedAt, userId);
+        }
         send({ type: "complete", totalFeeds: total, updated, failed, newArticles });
       } catch (error) {
         send({ type: "error", error: error instanceof Error ? error.message : "Unknown error" });

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { cacheDel } from "@/lib/redis";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { refreshFeed, runWithConcurrency } from "@/lib/rss/refresh";
+import { runPostRefreshAlerts } from "@/lib/rss/alerts";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const session = await auth();
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // full-text scraping, accurate insert counts, favicon derivation) matches
     // the cron path exactly. A manual refresh deliberately retries every feed —
     // no permanent errorCount exclusion — so users can recover failing feeds.
+    const refreshStartedAt = new Date();
     await runWithConcurrency(feeds, 5, async (feed) => {
       try {
         const result = await refreshFeed(feed);
@@ -69,17 +71,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         updated++;
       } catch (err) {
         failed++;
-        await prisma.feed.update({
-          where: { id: feed.id },
-          data: {
-            fetchError: err instanceof Error ? err.message : "Unknown error",
-            errorCount: { increment: 1 },
-          },
-        });
+        await prisma.feed
+          .update({
+            where: { id: feed.id },
+            data: {
+              fetchError: err instanceof Error ? err.message : "Unknown error",
+              errorCount: { increment: 1 },
+            },
+          })
+          .catch(() => {});
       }
     });
 
     if (updated > 0) await cacheDel("sidebar:*");
+    if (newArticles > 0) {
+      await runPostRefreshAlerts(feeds.map((f) => f.id), refreshStartedAt, session.user.id);
+    }
     return NextResponse.json({
       data: { totalFeeds: feeds.length, updated, failed, newArticles },
     });
