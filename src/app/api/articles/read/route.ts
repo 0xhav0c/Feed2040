@@ -10,7 +10,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const { articleId } = await req.json();
+    const { articleId, articleIds } = await req.json();
+
+    // Bulk form: mark an explicit list (e.g. the semantic-search results on screen).
+    if (Array.isArray(articleIds)) {
+      const ids = articleIds.filter((id: unknown): id is string => typeof id === "string").slice(0, 1000);
+      const owned = await prisma.article.findMany({
+        where: { id: { in: ids }, feed: { userId: session.user.id } },
+        select: { id: true },
+      });
+      const userId = session.user.id;
+      const result = await prisma.readArticle.createMany({
+        data: owned.map((a: { id: string }) => ({ userId, articleId: a.id })),
+        skipDuplicates: true,
+      });
+      await cacheDel("sidebar:*");
+      return NextResponse.json({ data: { read: true, marked: result.count } });
+    }
+
     if (!articleId) {
       return NextResponse.json({ error: "articleId is required" }, { status: 400 });
     }

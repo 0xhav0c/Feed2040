@@ -13,7 +13,10 @@ export async function GET(): Promise<NextResponse> {
       where: { userId: session.user.id },
       include: {
         article: {
-          include: { feed: { select: { id: true, title: true, faviconUrl: true } } },
+          include: {
+            feed: { select: { id: true, title: true, faviconUrl: true } },
+            readArticles: { where: { userId: session.user.id }, select: { id: true } },
+          },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -26,7 +29,7 @@ export async function GET(): Promise<NextResponse> {
       imageUrl: bm.article.imageUrl, publishedAt: bm.article.publishedAt,
       enclosureUrl: bm.article.enclosureUrl, enclosureType: bm.article.enclosureType,
       enclosureDuration: bm.article.enclosureDuration,
-      feed: bm.article.feed, isRead: true, isBookmarked: true,
+      feed: bm.article.feed, isRead: bm.article.readArticles.length > 0, isBookmarked: true,
       createdAt: bm.article.createdAt,
     }));
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cacheDel } from "@/lib/redis";
+import { buildArticleWhere } from "@/lib/article-scope";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -19,60 +20,47 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const { feedId, categoryId, filter } = body as {
-      feedId?: string;
-      categoryId?: string;
-      filter?: string;
-    };
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" ? v : "");
+    const userId = session.user.id as string;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = {
-      feed: { userId: session.user.id },
-      readArticles: { none: { userId: session.user.id } },
-    };
-
-    if (feedId) where.feedId = feedId;
-
-    if (categoryId) {
-      where.feed = {
-        ...where.feed,
-        categories: { some: { categoryId } },
-      };
-    }
-
-    if (filter === "today") {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayEnd = new Date(todayStart);
-      todayEnd.setDate(todayEnd.getDate() + 1);
-      where.publishedAt = { gte: todayStart, lt: todayEnd };
-    }
-
-    const unreadArticles = await prisma.article.findMany({
-      where,
-      select: { id: true },
-      take: 5000,
+    // Same scope as GET /api/articles so "mark all" only touches what the
+    // current view (feed/category/tag/saved/search/filter) actually lists.
+    const where = buildArticleWhere(userId, {
+      feedId: str(body.feedId),
+      categoryId: str(body.categoryId),
+      tagId: str(body.tagId),
+      saved: body.saved === true || body.saved === "1",
+      search: str(body.q),
+      filter: str(body.filter),
+      tz: str(body.tz),
     });
+    where.readArticles = { none: { userId } };
 
-    if (unreadArticles.length === 0) {
+    // Batch through the whole backlog instead of silently stopping at a cap.
+    let marked = 0;
+    for (;;) {
+      const batch = await prisma.article.findMany({
+        where,
+        select: { id: true },
+        take: 5000,
+      });
+      if (batch.length === 0) break;
+      const result = await prisma.readArticle.createMany({
+        data: batch.map((a: { id: string }) => ({ userId, articleId: a.id })),
+        skipDuplicates: true,
+      });
+      marked += result.count;
+      if (batch.length < 5000 || result.count === 0) break;
+    }
+
+    if (marked === 0) {
       return NextResponse.json({ data: { marked: 0 } });
     }
 
-    const articleIds = unreadArticles.map((a: { id: string }) => a.id);
-
-    const userId = session.user.id as string;
-    await prisma.readArticle.createMany({
-      data: articleIds.map((articleId: string) => ({
-        userId,
-        articleId,
-      })),
-      skipDuplicates: true,
-    });
-
     await cacheDel("sidebar:*");
 
-    return NextResponse.json({ data: { marked: articleIds.length } });
+    return NextResponse.json({ data: { marked } });
   } catch (error) {
     console.error("Failed to mark all as read:", error);
     return NextResponse.json(

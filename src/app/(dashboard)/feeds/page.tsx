@@ -166,6 +166,7 @@ function FeedsContent() {
         if (tagId) params.set("tagId", tagId);
         if (saved) params.set("saved", "1");
         if (filter) params.set("filter", filter);
+        params.set("tz", Intl.DateTimeFormat().resolvedOptions().timeZone);
 
         const res = await fetch(`/api/articles?${params}`);
         const data = await res.json();
@@ -278,19 +279,36 @@ function FeedsContent() {
   const handleMarkAllRead = useCallback(async () => {
     setMarkingAllRead(true);
     try {
-      const body: Record<string, string> = {};
-      if (feedId) body.feedId = feedId;
-      if (categoryId) body.categoryId = categoryId;
-      if (activeFilter) body.filter = activeFilter;
+      let res: Response;
+      if (semanticMode && searchQuery.trim()) {
+        // Semantic results can't be re-derived server-side; mark exactly the
+        // articles on screen.
+        const ids = articlesRef.current.filter((a) => !a.isRead).map((a) => a.id);
+        res = await fetch("/api/articles/read", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ articleIds: ids }),
+        });
+      } else {
+        const body: Record<string, string> = {
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        };
+        if (feedId) body.feedId = feedId;
+        if (categoryId) body.categoryId = categoryId;
+        if (tagId) body.tagId = tagId;
+        if (saved) body.saved = "1";
+        if (searchQuery.trim()) body.q = searchQuery.trim();
+        if (activeFilter) body.filter = activeFilter;
 
-      const res = await fetch("/api/articles/read-all", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+        res = await fetch("/api/articles/read-all", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }
       const data = await res.json();
       if (res.ok) {
-        toast.success(`Marked ${data.data.marked} articles as read`);
+        toast.success(`Marked ${data.data.marked ?? 0} articles as read`);
         setArticles((prev) => prev.map((a) => ({ ...a, isRead: true })));
         setUnreadCount(0);
         fetchArticles(page, searchQuery, activeFilter);
@@ -304,7 +322,7 @@ function FeedsContent() {
     } finally {
       setMarkingAllRead(false);
     }
-  }, [feedId, categoryId, activeFilter, fetchArticles, page, searchQuery]);
+  }, [feedId, categoryId, tagId, saved, semanticMode, activeFilter, fetchArticles, page, searchQuery]);
 
   const [refreshProgress, setRefreshProgress] = useState<{
     current: number;

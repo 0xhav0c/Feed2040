@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { dateKeyInTz, dayRangeInTz, resolveTimezone } from "@/lib/timezone";
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(req: NextRequest): Promise<NextResponse> {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -11,10 +12,12 @@ export async function GET(): Promise<NextResponse> {
   const userId = session.user.id;
 
   try {
+    // Day/week boundaries in the viewer's timezone (the server runs in UTC).
+    const tz = resolveTimezone(new URL(req.url).searchParams.get("tz"));
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfWeek = new Date(startOfToday);
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    const startOfToday = dayRangeInTz(tz, now).start;
+    const dayOfWeek = new Date(`${dateKeyInTz(tz, now)}T12:00:00Z`).getUTCDay();
+    const startOfWeek = dayRangeInTz(tz, new Date(now.getTime() - dayOfWeek * 86_400_000)).start;
 
     const [
       userCounts,

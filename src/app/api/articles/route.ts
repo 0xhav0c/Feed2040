@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { buildArticleWhere, todayRange, type ArticleScope } from "@/lib/article-scope";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const session = await auth();
@@ -10,96 +11,26 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   try {
     const { searchParams } = new URL(req.url);
-    const search = searchParams.get("q")?.trim() || "";
-    const page = parseInt(searchParams.get("page") || "1", 10);
-    const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100);
-    const feedId = searchParams.get("feedId") || "";
-    const categoryId = searchParams.get("categoryId") || "";
-    const tagId = searchParams.get("tagId") || "";
-    const filter = searchParams.get("filter") || "";
-    const saved = searchParams.get("saved") === "1";
+    const page = Math.max(parseInt(searchParams.get("page") || "1", 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "50", 10) || 50, 1), 100);
     const skip = (page - 1) * limit;
+    const userId = session.user.id;
 
-    // Saved (read-it-later) articles live in the per-user system feed; every
-    // other view excludes it so saved items stay in their own bucket.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = {
-      feed: { userId: session.user.id, isSystem: saved },
+    const scope: ArticleScope = {
+      feedId: searchParams.get("feedId") || "",
+      categoryId: searchParams.get("categoryId") || "",
+      tagId: searchParams.get("tagId") || "",
+      saved: searchParams.get("saved") === "1",
+      search: searchParams.get("q")?.trim() || "",
+      filter: searchParams.get("filter") || "",
+      tz: searchParams.get("tz"),
     };
 
-    if (feedId) {
-      where.feedId = feedId;
-    }
+    const where = buildArticleWhere(userId, scope);
+    // Counters describe the whole view, independent of the Today/Unread toggle.
+    const viewWhere = buildArticleWhere(userId, scope, false);
 
-    if (categoryId) {
-      where.feed = {
-        ...where.feed,
-        categories: { some: { categoryId } },
-      };
-    }
-
-    if (tagId) {
-      where.tags = { some: { tagId } };
-    }
-
-    if (filter === "unread") {
-      where.readArticles = { none: { userId: session.user.id } };
-    } else if (filter === "today") {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayEnd = new Date(todayStart);
-      todayEnd.setDate(todayEnd.getDate() + 1);
-      where.publishedAt = { gte: todayStart, lt: todayEnd };
-    }
-
-    if (search) {
-      where.OR = [
-        { title: { contains: search, mode: "insensitive" } },
-        { content: { contains: search, mode: "insensitive" } },
-        { summary: { contains: search, mode: "insensitive" } },
-        { author: { contains: search, mode: "insensitive" } },
-        { feed: { title: { contains: search, mode: "insensitive" } } },
-      ];
-    }
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
-
-    // Build a single raw SQL query for todayCount and unreadCount using
-    // conditional aggregation, reducing the original 4 parallel queries to 3.
-    const statsParams: (string | Date)[] = [session.user.id];
-    let statsFilterClause = "";
-    if (feedId) {
-      statsParams.push(feedId);
-      statsFilterClause += ` AND a."feedId" = $${statsParams.length}`;
-    }
-    if (categoryId) {
-      statsParams.push(categoryId);
-      statsFilterClause += ` AND EXISTS (
-        SELECT 1 FROM "FeedCategory" fc WHERE fc."feedId" = a."feedId" AND fc."categoryId" = $${statsParams.length}
-      )`;
-    }
-    statsParams.push(todayStart);
-    const todayParamIndex = statsParams.length;
-    statsParams.push(todayEnd);
-    const todayEndParamIndex = statsParams.length;
-    statsParams.push(session.user.id);
-    const unreadUserParamIndex = statsParams.length;
-
-    const statsQuery = `
-      SELECT
-        COUNT(*) FILTER (WHERE a."publishedAt" >= $${todayParamIndex} AND a."publishedAt" < $${todayEndParamIndex}) AS "todayCount",
-        COUNT(*) FILTER (WHERE NOT EXISTS (
-          SELECT 1 FROM "ReadArticle" ra WHERE ra."articleId" = a."id" AND ra."userId" = $${unreadUserParamIndex}
-        )) AS "unreadCount"
-      FROM "Article" a
-      JOIN "Feed" f ON f."id" = a."feedId"
-      WHERE f."userId" = $1 AND f."isSystem" = ${saved ? "TRUE" : "FALSE"}${statsFilterClause}
-    `;
-
-    const [articles, total, statsResult] = await Promise.all([
+    const [articles, total, todayCount, unreadCount] = await Promise.all([
       prisma.article.findMany({
         where,
         select: {
@@ -117,30 +48,27 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           enclosureDuration: true,
           feed: { select: { id: true, title: true, url: true, siteUrl: true, faviconUrl: true, language: true } },
           bookmarks: {
-            where: { userId: session.user.id },
+            where: { userId },
             select: { id: true },
           },
           readArticles: {
-            where: { userId: session.user.id },
+            where: { userId },
             select: { id: true },
           },
           tags: {
             select: { tag: { select: { id: true, name: true, color: true } } },
           },
         },
-        orderBy: { createdAt: "desc" },
+        // createMany gives a whole refresh batch the same createdAt; seq breaks
+        // the tie so OFFSET pages never overlap or skip rows.
+        orderBy: [{ createdAt: "desc" }, { seq: "desc" }],
         skip,
         take: limit,
       }),
       prisma.article.count({ where }),
-      prisma.$queryRawUnsafe<{ todayCount: bigint; unreadCount: bigint }[]>(
-        statsQuery,
-        ...statsParams
-      ),
+      prisma.article.count({ where: { ...viewWhere, publishedAt: todayRange(scope.tz) } }),
+      prisma.article.count({ where: { ...viewWhere, readArticles: { none: { userId } } } }),
     ]);
-
-    const todayCount = Number(statsResult[0]?.todayCount ?? 0);
-    const unreadCount = Number(statsResult[0]?.unreadCount ?? 0);
 
     const formatted = articles.map((a: (typeof articles)[number]) => ({
       id: a.id,
@@ -152,6 +80,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       author: a.author,
       imageUrl: a.imageUrl,
       publishedAt: a.publishedAt,
+      enclosureUrl: a.enclosureUrl,
+      enclosureType: a.enclosureType,
+      enclosureDuration: a.enclosureDuration,
       feed: a.feed,
       isRead: a.readArticles.length > 0,
       isBookmarked: a.bookmarks.length > 0,

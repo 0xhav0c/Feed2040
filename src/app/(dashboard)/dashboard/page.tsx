@@ -75,7 +75,7 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await fetch("/api/stats");
+        const res = await fetch(`/api/stats?tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`);
         const data = await res.json();
         if (res.ok && data.data) {
           setStats(data.data);
