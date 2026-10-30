@@ -3,6 +3,11 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { verifyCronAuth } from "@/lib/cron-auth";
 import { getAppSetting, setAppSetting } from "@/lib/settings";
+import { requireAdmin } from "@/lib/admin";
+
+// With no value saved in the DB, fall back to the env setting the worker
+// started with instead of a hard-coded 15 (which silently overrode it).
+const DEFAULT_INTERVAL = parseInt(process.env.REFRESH_INTERVAL_MINUTES || "15", 10) || 15;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const isCron = verifyCronAuth(req);
@@ -23,23 +28,25 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({
       data: {
-        intervalMinutes: intervalSetting ? parseInt(intervalSetting.value, 10) : 15,
+        intervalMinutes: intervalSetting ? parseInt(intervalSetting.value, 10) : DEFAULT_INTERVAL,
         importConcurrency: concurrencySetting ? parseInt(concurrencySetting.value, 10) : 5,
         retentionDays: retentionDaysValue ? parseInt(retentionDaysValue, 10) : 0,
       },
     });
   } catch {
     return NextResponse.json({
-      data: { intervalMinutes: 15, importConcurrency: 5, retentionDays: 0 },
+      data: { intervalMinutes: DEFAULT_INTERVAL, importConcurrency: 5, retentionDays: 0 },
     });
   }
 }
 
-// PUT /api/settings/refresh - Update refresh interval + import concurrency
+// PUT /api/settings/refresh - Update refresh interval + import concurrency.
+// These are instance-wide (retention deletes every user's articles), so only
+// an admin may change them.
 export async function PUT(req: NextRequest): Promise<NextResponse> {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { error, status } = await requireAdmin();
+  if (error) {
+    return NextResponse.json({ error }, { status });
   }
 
   try {
@@ -95,7 +102,7 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({
       data: {
-        intervalMinutes: intervalSetting ? parseInt(intervalSetting.value, 10) : 15,
+        intervalMinutes: intervalSetting ? parseInt(intervalSetting.value, 10) : DEFAULT_INTERVAL,
         importConcurrency: concurrencySetting ? parseInt(concurrencySetting.value, 10) : 5,
         retentionDays: retentionDaysValue ? parseInt(retentionDaysValue, 10) : 0,
       },

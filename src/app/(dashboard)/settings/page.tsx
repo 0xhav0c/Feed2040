@@ -165,7 +165,7 @@ function SettingsContent() {
 
           <TabsContent value="general" className="flex-1 overflow-y-auto p-6 mt-0">
             <div className="mx-auto max-w-5xl">
-              <GeneralSettings />
+              <GeneralSettings isAdmin={isAdmin} />
             </div>
           </TabsContent>
           <TabsContent value="ai" className="flex-1 overflow-y-auto p-6 mt-0">
@@ -366,7 +366,7 @@ type FeedHealthEntry = {
 };
 
 // ── General Settings ─────────────────────────────────────────────────
-function GeneralSettings() {
+function GeneralSettings({ isAdmin }: { isAdmin: boolean }) {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [interval, setInterval] = useState(15);
@@ -456,20 +456,32 @@ function GeneralSettings() {
   async function handleSave() {
     setSaving(true);
     try {
-      await Promise.all([
+      const requests = [
         fetch("/api/settings/profile", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, username }),
         }),
-        fetch("/api/settings/refresh", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ intervalMinutes: interval, importConcurrency: concurrency, retentionDays }),
-        }),
-      ]);
+      ];
+      // Refresh/retention settings are instance-wide and admin-only.
+      if (isAdmin) {
+        requests.push(
+          fetch("/api/settings/refresh", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ intervalMinutes: interval, importConcurrency: concurrency, retentionDays }),
+          })
+        );
+      }
+      const responses = await Promise.all(requests);
       localStorage.setItem("translateLanguage", translateLang);
-      toast.success("Settings updated");
+      const failed = responses.find((r) => !r.ok);
+      if (failed) {
+        const data = await failed.json().catch(() => ({}));
+        toast.error(data.error || "Failed to save");
+      } else {
+        toast.success("Settings updated");
+      }
     } catch {
       toast.error("Failed to save");
     } finally {
@@ -540,13 +552,13 @@ function GeneralSettings() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs text-muted-foreground">Refresh Interval</label>
-                  <select value={interval} onChange={(e) => setInterval(parseInt(e.target.value, 10))} className={selectClass}>
+                  <select value={interval} onChange={(e) => setInterval(parseInt(e.target.value, 10))} className={selectClass} disabled={!isAdmin} title={isAdmin ? undefined : "Only an admin can change this"}>
                     {INTERVAL_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-muted-foreground">Article Retention</label>
-                  <select value={retentionDays} onChange={(e) => setRetentionDays(parseInt(e.target.value, 10))} className={selectClass}>
+                  <select value={retentionDays} onChange={(e) => setRetentionDays(parseInt(e.target.value, 10))} className={selectClass} disabled={!isAdmin} title={isAdmin ? undefined : "Only an admin can change this"}>
                     {RETENTION_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                   </select>
                 </div>
@@ -1316,6 +1328,8 @@ function AISettingsTab() {
 function TelegramSettingsTab() {
   const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
   const [connected, setConnected] = useState(false);
+  const [scheduleInput, setScheduleInput] = useState("");
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [botUsername, setBotUsername] = useState<string | null>(null);
   const [connectToken, setConnectToken] = useState<string | null>(null);
   
@@ -1335,8 +1349,11 @@ function TelegramSettingsTab() {
       const botData = await botRes.json();
 
       if (keysRes.ok && keysData.data?.telegram) setKeyInfo(keysData.data.telegram);
-      if (settingsRes.ok && settingsData.data) {
+      // A row also survives /stop (isActive=false); that state must offer a
+      // fresh connection token again.
+      if (settingsRes.ok && settingsData.data?.isActive) {
         setConnected(true);
+        setScheduleInput((settingsData.data.scheduleTimes || []).join(", "));
       } else {
         setConnected(false);
       }
@@ -1361,7 +1378,35 @@ function TelegramSettingsTab() {
     finally { setGeneratingToken(false); }
   }
 
-  
+  async function handleSaveSchedule() {
+    const scheduleTimes = scheduleInput
+      .split(/[,\s]+/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => (/^\d:\d\d$/.test(t) ? `0${t}` : t));
+    setSavingSchedule(true);
+    try {
+      const res = await fetch("/api/settings/telegram", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scheduleTimes,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setScheduleInput((data.data?.scheduleTimes || scheduleTimes).join(", "));
+        toast.success(scheduleTimes.length ? "Delivery schedule saved" : "Scheduled delivery turned off");
+      } else {
+        toast.error(data.error || "Failed to save schedule");
+      }
+    } catch {
+      toast.error("Failed to save schedule");
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
 
   async function handleTestMessage() {
     setTesting(true);
@@ -1435,10 +1480,30 @@ function TelegramSettingsTab() {
               </div>
             )}
             {connected && (
-              <div className="flex gap-3">
-                <Button variant="outline" onClick={handleTestMessage} disabled={testing}>
-                  {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Test Message
-                </Button>
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <Button variant="outline" onClick={handleTestMessage} disabled={testing}>
+                    {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Test Message
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="tg-schedule">Daily delivery times</label>
+                  <p className="text-xs text-muted-foreground">
+                    Send today&apos;s briefing to Telegram at these times (24h, comma-separated, your local timezone). Leave empty to turn off.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      id="tg-schedule"
+                      value={scheduleInput}
+                      onChange={(e) => setScheduleInput(e.target.value)}
+                      placeholder="09:00, 18:00"
+                      className="max-w-xs"
+                    />
+                    <Button onClick={handleSaveSchedule} disabled={savingSchedule}>
+                      {savingSchedule ? <Loader2 size={14} className="animate-spin" /> : null} Save
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </CardContent>
