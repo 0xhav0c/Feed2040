@@ -11,6 +11,7 @@ import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
 import type { ViewMode, ArticleWithFeed } from "@/types";
 import { isSafeUrl } from "@/lib/utils/url-validator";
 import { toast } from "sonner";
+import { LibraryTabs } from "@/components/layout/LibraryTabs";
 
 const PAGE_SIZE = 30;
 
@@ -137,23 +138,25 @@ export default function BookmarksPage() {
   return (
     <>
       <Header
-        title="Read Later"
-        subtitle={`${filtered.length} saved articles`}
+        title="Library"
+        subtitle={`${filtered.length} bookmarked article${filtered.length === 1 ? "" : "s"}`}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />
       <div className="flex-1 overflow-y-auto">
         {/* Search bar */}
-        <div className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur px-4 py-2">
-          <div className="relative max-w-md">
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur md:px-6">
+          <LibraryTabs active="bookmarks" />
+          <div className="relative w-full max-w-md flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder='Search saved articles... (press "/" to focus)'
-              className="w-full rounded-xl pl-9 pr-8 py-2 text-sm"
+              placeholder="Search bookmarks  /"
+              aria-label="Search bookmarks"
+              className="h-9 w-full pl-9 pr-8 text-[13.5px]"
             />
             {searchQuery && (
               <Button
@@ -179,12 +182,12 @@ export default function BookmarksPage() {
             </div>
             <div className="text-center">
               <h3 className="text-lg font-semibold">
-                {searchQuery ? "No matching articles" : "No saved articles yet"}
+                {searchQuery ? "No matching articles" : "No bookmarks yet"}
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 {searchQuery
                   ? "Try a different search term"
-                  : "Click the save icon on any article to add it here"}
+                  : "Press b or the bookmark icon on any article to keep it here"}
               </p>
             </div>
           </div>

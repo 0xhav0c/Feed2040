@@ -65,18 +65,18 @@ const BASE_TABS = [
 const ADMIN_TAB = { id: "users", label: "Users", icon: Users };
 
 const LANGUAGES = [
-  { value: "en", label: "🇬🇧 English" },
-  { value: "tr", label: "🇹🇷 Türkçe" },
-  { value: "de", label: "🇩🇪 Deutsch" },
-  { value: "fr", label: "🇫🇷 Français" },
-  { value: "es", label: "🇪🇸 Español" },
-  { value: "ru", label: "🇷🇺 Русский" },
-  { value: "zh", label: "🇨🇳 中文" },
-  { value: "ja", label: "🇯🇵 日本語" },
-  { value: "ko", label: "🇰🇷 한국어" },
-  { value: "pt", label: "🇧🇷 Português" },
-  { value: "ar", label: "🇸🇦 العربية" },
-  { value: "it", label: "🇮🇹 Italiano" },
+  { value: "en", label: "English" },
+  { value: "tr", label: "Türkçe" },
+  { value: "de", label: "Deutsch" },
+  { value: "fr", label: "Français" },
+  { value: "es", label: "Español" },
+  { value: "ru", label: "Русский" },
+  { value: "zh", label: "中文" },
+  { value: "ja", label: "日本語" },
+  { value: "ko", label: "한국어" },
+  { value: "pt", label: "Português" },
+  { value: "ar", label: "العربية" },
+  { value: "it", label: "Italiano" },
 ] as const;
 
 const TIMEZONES = [
