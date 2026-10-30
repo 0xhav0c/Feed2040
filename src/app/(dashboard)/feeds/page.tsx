@@ -11,12 +11,9 @@ import {
   Keyboard,
   Sparkles,
   RefreshCw,
-  Clock,
   Rss,
   Plus,
   CheckCheck,
-  CalendarDays,
-  Eye,
   ArrowLeft,
   BookmarkPlus,
   Save,
@@ -25,11 +22,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { isSafeUrl } from "@/lib/utils/url-validator";
+import { LibraryTabs } from "@/components/layout/LibraryTabs";
 import { DigestModal } from "@/components/feed/DigestModal";
 import type { ArticleWithFeed } from "@/types";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
@@ -308,8 +305,8 @@ function FeedsContent() {
     setPage(1);
   }, []);
 
-  const toggleFilter = useCallback((f: "today" | "unread") => {
-    setActiveFilter((prev) => (prev === f ? "" : f));
+  const selectFilter = useCallback((f: "" | "today" | "unread") => {
+    setActiveFilter(f);
     setPage(1);
     setUnreadSince(new Date().toISOString());
   }, []);
@@ -648,7 +645,7 @@ function FeedsContent() {
   useKeyboardShortcuts(shortcuts);
 
   const title = saved
-    ? "Saved"
+    ? "Library"
     : feedId
     ? filterTitle || "Feed"
     : categoryId
@@ -678,7 +675,7 @@ function FeedsContent() {
         {/* Refresh progress bar (spans full width) */}
         <div
           className={cn(
-            "overflow-hidden border-b border-border bg-card/80 transition-all duration-300 ease-out flex-shrink-0",
+            "overflow-hidden border-b border-border bg-card transition-all duration-200 ease-out flex-shrink-0",
             showRefreshBar ? "max-h-24 opacity-100" : "max-h-0 opacity-0"
           )}
         >
@@ -692,10 +689,10 @@ function FeedsContent() {
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-muted-foreground shrink-0">
-                  <span className="text-green-500 font-medium">{refreshProgress.newArticles} new</span>
+                  <span className="font-medium text-signal">{refreshProgress.newArticles} new</span>
                   <span>{refreshProgress.updated} ok</span>
                   {refreshProgress.failed > 0 && (
-                    <span className="text-red-500">{refreshProgress.failed} err</span>
+                    <span className="text-destructive">{refreshProgress.failed} err</span>
                   )}
                   <span className="font-mono">{refreshProgress.current}/{refreshProgress.total}</span>
                 </div>
@@ -709,134 +706,103 @@ function FeedsContent() {
         <div className="flex flex-1 min-h-0">
           {/* LEFT: Article list panel */}
           <div className={cn(
-            "w-full md:w-[420px] flex-shrink-0 flex-col border-r border-border bg-card/30",
+            "w-full md:w-[420px] flex-shrink-0 flex-col border-r border-border bg-card",
             mobileShowArticle ? "hidden md:flex" : "flex"
           )}>
             {/* List header */}
-            <div className="border-b border-border px-4 py-3 flex-shrink-0 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0">
-                  <h2 className="text-base font-bold text-foreground truncate">{title}</h2>
-                  <p className="text-xs text-muted-foreground">
+            <div className="flex-shrink-0 space-y-2.5 border-b border-border px-4 pb-3 pt-3.5">
+              {saved && <LibraryTabs active="saved" />}
+              <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-1 items-baseline gap-2">
+                  <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">{title}</h2>
+                  <span className="shrink-0 text-[12.5px] tabular-nums text-muted-foreground">
                     {refreshing
                       ? refreshProgress
-                        ? `Refreshing ${refreshProgress.current}/${refreshProgress.total}...`
-                        : "Refreshing..."
+                        ? `Refreshing ${refreshProgress.current}/${refreshProgress.total}…`
+                        : "Refreshing…"
                       : searchQuery
-                      ? `${total} results`
-                      : `${total} articles`}
-                  </p>
+                      ? `${total.toLocaleString("en-US")} results`
+                      : `${unreadCount.toLocaleString("en-US")} unread`}
+                  </span>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="flex flex-shrink-0 items-center gap-0.5">
                   {searchQuery.trim() && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={openSaveSearch}
-                      title="Save this search"
-                      aria-label="Save this search"
-                    >
-                      <Save size={16} className="text-muted-foreground" />
+                    <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={openSaveSearch} title="Save this search" aria-label="Save this search">
+                      <Save size={17} />
                     </Button>
                   )}
+                  <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => setShowDigest(true)} title="Daily Briefing" aria-label="Daily Briefing">
+                    <Sparkles size={17} />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
                     onClick={handleMarkAllRead}
                     disabled={markingAllRead || unreadCount === 0}
-                    title="Mark all as read"
+                    title="Mark all as read (Shift+A)"
                     aria-label="Mark all as read"
                   >
-                    {markingAllRead ? (
-                      <Loader2 size={16} className="animate-spin text-muted-foreground" />
-                    ) : (
-                      <CheckCheck size={16} className="text-muted-foreground" />
-                    )}
+                    {markingAllRead ? <Loader2 size={17} className="animate-spin" /> : <CheckCheck size={17} />}
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setShowDigest(true)}
-                    title="Daily Briefing"
-                    aria-label="Daily Briefing"
-                  >
-                    <Sparkles size={16} className="text-muted-foreground" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
                     onClick={handleRefresh}
                     disabled={refreshing}
-                    title="Refresh Feeds"
+                    title="Refresh feeds (r)"
                     aria-label="Refresh feeds"
                   >
-                    <RefreshCw
-                      size={16}
-                      className={cn(
-                        "text-muted-foreground",
-                        refreshing && "animate-spin"
-                      )}
-                    />
+                    <RefreshCw size={17} className={cn(refreshing && "animate-spin")} />
                   </Button>
                 </div>
               </div>
 
-              {/* Filter badges */}
-              <div className="flex items-center gap-2">
-                <Badge
-                  variant={activeFilter === "today" ? "default" : "outline"}
-                  className="cursor-pointer gap-1 text-xs"
-                  onClick={() => toggleFilter("today")}
-                >
-                  <CalendarDays size={11} />
-                  Today
-                  <span className={cn(
-                    "ml-0.5 font-bold",
-                    activeFilter === "today" ? "text-primary-foreground" : "text-primary"
-                  )}>
-                    {todayCount}
-                  </span>
-                </Badge>
-                <Badge
-                  variant={activeFilter === "unread" ? "default" : "outline"}
-                  className="cursor-pointer gap-1 text-xs"
-                  onClick={() => toggleFilter("unread")}
-                >
-                  <Eye size={11} />
-                  Unread
-                  <span className={cn(
-                    "ml-0.5 font-bold",
-                    activeFilter === "unread" ? "text-primary-foreground" : "text-primary"
-                  )}>
-                    {unreadCount}
-                  </span>
-                </Badge>
+              {/* Segmented filter */}
+              <div role="tablist" aria-label="Filter" className="inline-flex rounded-[9px] border border-border bg-background p-[3px]">
+                {([
+                  ["", "All", null],
+                  ["unread", "Unread", unreadCount],
+                  ["today", "Today", todayCount],
+                ] as const).map(([key, label, count]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeFilter === key}
+                    onClick={() => selectFilter(key)}
+                    className={cn(
+                      "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px] transition-colors",
+                      activeFilter === key ? "bg-muted text-foreground ring-1 ring-border" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {label}
+                    {count !== null && <span className="tabular-nums opacity-75">{count.toLocaleString("en-US")}</span>}
+                  </button>
+                ))}
               </div>
-            </div>
 
-            {/* Search */}
-            <div className="border-b border-border px-3 py-2 flex-shrink-0">
+              {/* Search */}
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search
-                    size={14}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-                  />
+                  <Search size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden />
                   <Input
                     ref={searchRef}
-                    type="text"
+                    type="search"
                     value={searchInput}
                     onChange={(e) => handleSearchChange(e.target.value)}
-                    placeholder={semanticMode ? "Search by meaning..." : "Search... (press /)"}
-                    className="pl-8 pr-7 h-8 text-sm"
+                    placeholder={semanticMode ? "Search by meaning…" : "Search articles  /"}
+                    aria-label="Search articles"
+                    className="h-9 bg-background pl-8 pr-8 text-[13.5px]"
                   />
                   {searchInput && (
                     <button
                       onClick={clearSearch}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
                       aria-label="Clear search"
                     >
-                      <X size={12} />
+                      <X size={14} />
                     </button>
                   )}
                 </div>
@@ -846,17 +812,17 @@ function FeedsContent() {
                   aria-label="Toggle semantic search"
                   aria-pressed={semanticMode}
                   className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors",
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors",
                     semanticMode
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                      ? "border-primary/50 bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
-                  <Brain size={15} />
+                  <Brain size={16} />
                 </button>
               </div>
               {semanticMode && semanticFallback && searchQuery && (
-                <p className="mt-1.5 text-[11px] text-amber-500">
+                <p className="text-[12px] text-amber-400">
                   Embeddings unavailable — showing keyword results. Build the index in Settings › AI.
                 </p>
               )}
@@ -919,7 +885,7 @@ function FeedsContent() {
                     {!saved && !searchQuery && (
                       <Link
                         href="/feeds/add"
-                        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all"
+                        className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-brand-foreground transition-colors hover:bg-brand/90"
                       >
                         <Plus size={14} />
                         Add feed
@@ -974,11 +940,11 @@ function FeedsContent() {
             {/* Mobile back button */}
             {selectedArticle && (
               <button
-                className="md:hidden flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border-b border-border bg-background"
+                className="flex min-h-11 items-center gap-2 border-b border-border bg-background px-4 text-sm font-medium text-muted-foreground hover:text-foreground md:hidden"
                 onClick={() => setMobileShowArticle(false)}
               >
-                <ArrowLeft size={16} />
-                Back to list
+                <ArrowLeft size={17} />
+                {title}
               </button>
             )}
             {selectedArticle ? (
@@ -993,14 +959,14 @@ function FeedsContent() {
               />
             ) : (
               <div className="flex flex-1 items-center justify-center">
-                <div className="text-center space-y-3">
-                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50">
-                    <Rss className="h-7 w-7 text-muted-foreground/50" />
+                <div className="space-y-3 text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card">
+                    <Rss className="h-6 w-6 text-muted-foreground" aria-hidden />
                   </div>
-                  <p className="text-base text-muted-foreground">
+                  <p className="text-[15px] text-foreground/90">
                     Select an article to read
                   </p>
-                  <p className="text-sm text-muted-foreground/60">
+                  <p className="text-[13px] text-muted-foreground">
                     Use <kbd className="rounded border border-border px-1.5 py-0.5 text-xs font-mono">j</kbd> / <kbd className="rounded border border-border px-1.5 py-0.5 text-xs font-mono">k</kbd> to navigate
                   </p>
                 </div>
@@ -1088,7 +1054,7 @@ function FeedsContent() {
   );
 }
 
-/* ─── Mail-style list item ──────────────────────────────────── */
+/* ─── List row ──────────────────────────────────────────────── */
 const MailListItem = memo(function MailListItem({
   article,
   isSelected,
@@ -1099,59 +1065,76 @@ const MailListItem = memo(function MailListItem({
   onSelect: (article: ArticleWithFeed) => void;
 }) {
   const timeAgo = useMemo(() => {
-    const dateStr = article.createdAt || article.publishedAt;
+    const dateStr = article.publishedAt || article.createdAt;
     if (!dateStr) return null;
     const date = new Date(dateStr);
-    const now = new Date();
-    if (date.getTime() > now.getTime() + 86400000) return null;
-    return formatDistanceToNow(date, { addSuffix: true });
+    if (date.getTime() > new Date().getTime() + 86400000) return null;
+    return formatDistanceToNow(date, { addSuffix: false }).replace(/^about /, "");
   }, [article.createdAt, article.publishedAt]);
+
+  const firstTag = article.tags?.[0];
 
   return (
     <button
       data-article-id={article.id}
+      data-article-row
       onClick={() => onSelect(article)}
+      aria-current={isSelected ? "true" : undefined}
       className={cn(
-        "w-full text-left px-4 py-3 border-b border-border/50 transition-colors hover:bg-muted/50 focus:outline-none",
-        isSelected && "bg-primary/8 border-l-2 border-l-primary",
-        !isSelected && "border-l-2 border-l-transparent",
-        article.isRead && !isSelected && "opacity-60"
+        "relative block w-full border-b border-border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        isSelected
+          ? "bg-gradient-to-r from-brand/[0.18] to-brand/[0.04] shadow-[inset_2px_0_0_var(--primary)]"
+          : "hover:bg-muted/70"
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          {/* Title */}
-          <p
-            className={cn(
-              "text-[0.9rem] leading-snug truncate",
-              !article.isRead ? "font-semibold text-foreground" : "font-medium text-foreground/80"
-            )}
-          >
-            {!article.isRead && (
-              <span className="inline-block h-2 w-2 rounded-full bg-primary mr-2 flex-shrink-0 align-middle" />
-            )}
-            {article.title}
-          </p>
-          {/* Feed source */}
-          <p className="mt-1 text-xs text-muted-foreground truncate">
-            {article.feed.title}
-            {article.author && <span> · {article.author}</span>}
-          </p>
-          {/* Summary preview */}
-          {article.summary && (
-            <p className="mt-1 text-xs text-muted-foreground/70 line-clamp-1">
-              {article.summary}
-            </p>
-          )}
-        </div>
-        {/* Time */}
+      <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
+        <FeedMark title={article.feed.title} faviconUrl={article.feed.faviconUrl} />
+        <span className="min-w-0 truncate text-foreground/80">{article.feed.title}</span>
         {timeAgo && (
-          <span className="flex-shrink-0 flex items-center gap-1 text-[11px] text-muted-foreground/60 pt-0.5">
-            <Clock size={10} />
-            {timeAgo}
+          <>
+            <span aria-hidden>·</span>
+            <time className="shrink-0" dateTime={String(article.publishedAt || article.createdAt)}>{timeAgo}</time>
+          </>
+        )}
+        {firstTag && (
+          <span className="ml-1 shrink-0 rounded-[5px] border border-border bg-muted px-1.5 text-[11px] leading-[18px] text-muted-foreground">
+            {firstTag.name}
           </span>
         )}
+        {!article.isRead && (
+          <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-signal shadow-[0_0_8px] shadow-signal/60" aria-label="Unread" />
+        )}
       </div>
+      <p
+        className={cn(
+          "mt-1.5 line-clamp-2 text-[14.5px] leading-snug",
+          article.isRead ? "font-medium text-foreground/70" : "font-semibold text-foreground"
+        )}
+      >
+        {article.title}
+      </p>
+      {article.summary && (
+        <p className="mt-1 line-clamp-2 text-[13px] leading-normal text-muted-foreground">{article.summary}</p>
+      )}
     </button>
   );
 });
+
+/** Feed favicon, or a coloured initial when the feed has none. */
+function FeedMark({ title, faviconUrl }: { title: string; faviconUrl?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (faviconUrl && !failed) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={faviconUrl} alt="" className="h-4 w-4 shrink-0 rounded-[4px]" loading="lazy" onError={() => setFailed(true)} />;
+  }
+  const hue = [...title].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
+  return (
+    <span
+      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] text-[10px] font-bold text-white"
+      style={{ background: `hsl(${hue} 55% 42%)` }}
+      aria-hidden
+    >
+      {title.trim().charAt(0).toUpperCase() || "?"}
+    </span>
+  );
+}
