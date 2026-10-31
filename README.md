@@ -117,6 +117,7 @@ Each user configures their own API keys through the **Settings UI** after login.
 | Variable | Description |
 |----------|-------------|
 | `OPENAI_API_KEY` | OpenAI API key (instance-wide fallback) |
+| `OPENAI_BASE_URL` | OpenAI-compatible endpoint for that key, e.g. a proxy or `http://ollama:11434/v1` |
 | `ANTHROPIC_API_KEY` | Anthropic API key (instance-wide fallback) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token (instance-wide fallback) |
 
