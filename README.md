@@ -142,7 +142,7 @@ Feed2040 talks to any **OpenAI-compatible** API. Set it up under **Settings → 
 |----------|----------|-------|
 | **OpenAI** | leave empty | Pay per token |
 | **Ollama** (local) | `http://<ollama-host>:11434/v1` | Free, runs on your hardware; no API key needed |
-| **OpenRouter, LiteLLM, other proxies** | the proxy's `/v1` URL | Use Claude, Gemini, DeepSeek and others through one key |
+| **OpenRouter, LiteLLM, other proxies** | the proxy's `/v1` URL | Use Anthropic, Google, DeepSeek and other models through one key |
 
 ### Using Ollama (local AI)
 
