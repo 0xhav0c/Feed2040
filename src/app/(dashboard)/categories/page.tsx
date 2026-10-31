@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { createElement, useState, useEffect, useCallback } from "react";
 import { Header } from "@/components/layout/Header";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/input";
@@ -471,7 +471,6 @@ function CategoryRow({
   const [editingIcon, setEditingIcon] = useState(false);
   const [editingColor, setEditingColor] = useState(false);
 
-  const IconComp = getIconComponent(category.icon);
   const color = category.color || "#3b82f6";
 
   const saveName = () => {
@@ -513,7 +512,7 @@ function CategoryRow({
           className="flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:ring-2 hover:ring-primary/30"
           style={{ backgroundColor: color + "20" }}
         >
-          <IconComp size={18} style={{ color }} />
+          {createElement(getIconComponent(category.icon), { size: 18, style: { color } })}
         </Button>
         {editingIcon && (
           <div className="absolute left-0 top-12 z-10 grid grid-cols-5 gap-1 rounded-xl border border-border bg-card p-2 shadow-lg">

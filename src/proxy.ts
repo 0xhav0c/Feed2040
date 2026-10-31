@@ -38,7 +38,7 @@ function isValidOrigin(req: NextRequest): boolean {
   return hasSession || hasXhr;
 }
 
-export function middleware(req: NextRequest): NextResponse {
+export function proxy(req: NextRequest): NextResponse {
   const { pathname } = req.nextUrl;
 
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path));

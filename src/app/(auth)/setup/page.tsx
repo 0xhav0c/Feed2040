@@ -31,33 +31,32 @@ export default function SetupPage() {
   const [dbError, setDbError] = useState(false);
   const router = useRouter();
 
+  // Poll until the database answers, then show the form (or skip it).
   useEffect(() => {
-    checkSetup();
-  }, []);
-
-  async function checkSetup() {
-    try {
-      const res = await fetch("/api/setup");
-      const data = await res.json();
-
-      if (data.data?.dbError) {
-        setDbError(true);
-        // DB error - don't show form, keep checking
-        setTimeout(checkSetup, 3000);
-        return;
-      }
-
-      if (data.data?.needsSetup) {
-        setDbError(false);
-        setStep("form");
-      } else {
-        setStep("already-done");
-      }
-    } catch {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const retry = () => {
       setDbError(true);
-      setTimeout(checkSetup, 3000);
+      timer = setTimeout(check, 3000);
+    };
+    async function check() {
+      try {
+        const res = await fetch("/api/setup");
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.data?.dbError) return retry();
+        setDbError(false);
+        setStep(data.data?.needsSetup ? "form" : "already-done");
+      } catch {
+        if (!cancelled) retry();
+      }
     }
-  }
+    check();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

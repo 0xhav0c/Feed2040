@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useEffect, useMemo, useCallback } from "react";
+import { memo, useState, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import {
   Bookmark,
@@ -42,11 +42,14 @@ export const FeedArticleCard = memo(function FeedArticleCard({
   const [bookmarked, setBookmarked] = useState(article.isBookmarked);
   const [read, setRead] = useState(article.isRead);
 
-  // Sync with parent state changes
-  useEffect(() => {
+  // Adopt changes from the parent (e.g. marked read elsewhere) without an
+  // extra effect pass.
+  const [synced, setSynced] = useState({ bookmarked: article.isBookmarked, read: article.isRead });
+  if (synced.bookmarked !== article.isBookmarked || synced.read !== article.isRead) {
+    setSynced({ bookmarked: article.isBookmarked, read: article.isRead });
     setBookmarked(article.isBookmarked);
     setRead(article.isRead);
-  }, [article.isBookmarked, article.isRead]);
+  }
 
   const handleBookmark = useCallback(
     async (e: React.MouseEvent) => {
