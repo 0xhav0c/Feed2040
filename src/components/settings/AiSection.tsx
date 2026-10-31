@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState } from "react";
-import { AlertTriangle, CheckCircle2, Database, Loader2, RefreshCw, Zap } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { CardSkeleton, LANGUAGES, Note, SaveBar, Select, SettingRow, SettingsCard, StatusBadge } from "./primitives";
 import { SecretKeyField, type KeyInfo } from "./SecretKeyField";
 
@@ -15,7 +14,6 @@ type AiConfig = {
   baseUrl: string;
   model: string;
   digestModel: string;
-  embeddingModel: string;
   language: string;
 };
 
@@ -23,7 +21,6 @@ const DEFAULTS: AiConfig = {
   baseUrl: "",
   model: "gpt-4o-mini",
   digestModel: "gpt-4o",
-  embeddingModel: "text-embedding-3-small",
   language: "en",
 };
 
@@ -78,7 +75,6 @@ export function AiSection() {
           baseUrl: d.data?.baseUrl || "",
           model: d.data?.model || DEFAULTS.model,
           digestModel: d.data?.digestModel || DEFAULTS.digestModel,
-          embeddingModel: d.data?.embeddingModel || DEFAULTS.embeddingModel,
           language: d.data?.language || DEFAULTS.language,
         };
         setSaved(c);
@@ -121,7 +117,6 @@ export function AiSection() {
         loadingModels={loadingModels}
         onLoadModels={() => loadModels(draft.baseUrl)}
       />
-      <SemanticIndexCard />
     </div>
   );
 }
@@ -271,8 +266,6 @@ function ProviderCard({
   );
 }
 
-const looksLikeEmbedding = (m: string) => /embed|bge|e5-|gte-|nomic|minilm/i.test(m);
-
 function ModelField({
   id,
   value,
@@ -333,17 +326,15 @@ function ModelsCard({
 }) {
   const uid = useId();
   const [saving, setSaving] = useState(false);
-  const embeddingModels = models.filter(looksLikeEmbedding);
-  const keys = ["model", "digestModel", "embeddingModel", "language"] as const;
+  const keys = ["model", "digestModel", "language"] as const;
   const dirty = keys.some((k) => draft[k].trim() !== saved[k]);
-  const empty = !draft.model.trim() || !draft.digestModel.trim() || !draft.embeddingModel.trim();
+  const empty = !draft.model.trim() || !draft.digestModel.trim();
 
   async function save() {
     setSaving(true);
     const body = {
       model: draft.model.trim(),
       digestModel: draft.digestModel.trim(),
-      embeddingModel: draft.embeddingModel.trim(),
       language: draft.language,
     };
     const r = await putAi(body).catch(() => ({ ok: false, error: undefined }));
@@ -424,88 +415,6 @@ function ModelsCard({
           models={models}
           placeholder={DEFAULTS.digestModel}
         />
-      </SettingRow>
-      <SettingRow
-        label="Embeddings"
-        description="For semantic search and related articles. Must produce 1536-dimension vectors."
-        htmlFor={`${uid}-embed`}
-      >
-        <ModelField
-          id={`${uid}-embed`}
-          value={draft.embeddingModel}
-          onChange={(v) => setDraft({ ...draft, embeddingModel: v })}
-          models={embeddingModels.length ? embeddingModels : models}
-          placeholder={DEFAULTS.embeddingModel}
-        />
-        {embeddingModels.length > 0 && !looksLikeEmbedding(draft.embeddingModel) && (
-          <p className="mt-1.5 text-[13px] text-amber-700 dark:text-amber-400">
-            This looks like a chat model. Pick an embedding model, e.g. {embeddingModels.slice(0, 2).join(" or ")}.
-          </p>
-        )}
-      </SettingRow>
-    </SettingsCard>
-  );
-}
-
-function SemanticIndexCard() {
-  const [status, setStatus] = useState<{ total: number; embedded: number; remaining: number } | null>(null);
-  const [building, setBuilding] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/articles/embed-backfill");
-      const data = await res.json();
-      if (res.ok) setStatus(data.data);
-    } catch {
-      /* silent */
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function build() {
-    setBuilding(true);
-    try {
-      for (let i = 0; i < 200; i++) {
-        const res = await fetch("/api/articles/embed-backfill", { method: "POST" });
-        const data = await res.json();
-        if (!res.ok) {
-          if (res.status === 422) toast.error(data.error || "Your AI provider doesn't return embeddings.", { duration: 10000 });
-          else if (res.status === 429) toast.message("Rate limited — paused. Click again to continue.");
-          else toast.error(data.error || "Indexing failed");
-          break;
-        }
-        setStatus((prev) => (prev ? { ...prev, embedded: prev.total - data.data.remaining, remaining: data.data.remaining } : prev));
-        if (data.data.done || data.data.embedded === 0) {
-          toast.success("Semantic index is up to date");
-          break;
-        }
-      }
-    } finally {
-      setBuilding(false);
-      load();
-    }
-  }
-
-  const pct = status && status.total > 0 ? Math.round((status.embedded / status.total) * 100) : 0;
-  const upToDate = !!status && status.total > 0 && status.remaining === 0;
-
-  return (
-    <SettingsCard
-      title="Semantic search"
-      description="Indexes articles by meaning for semantic search and related articles. Indexing only runs when you start it, so run it again after new articles arrive."
-    >
-      <SettingRow label="Index" description={status ? `${status.embedded.toLocaleString()} of ${status.total.toLocaleString()} articles indexed` : "Checking…"}>
-        <div className="flex max-w-xl flex-wrap items-center gap-3">
-          <Progress value={pct} className="h-1.5 min-w-40 flex-1" aria-label={`${pct}% indexed`} />
-          <span className="w-10 text-right text-sm tabular-nums text-muted-foreground">{pct}%</span>
-          <Button variant={upToDate ? "outline" : "default"} onClick={build} disabled={building || upToDate}>
-            {building ? <Loader2 className="animate-spin" aria-hidden /> : <Database aria-hidden />}
-            {building ? "Indexing…" : upToDate ? "Up to date" : `Index ${status?.remaining.toLocaleString() ?? ""} articles`}
-          </Button>
-        </div>
       </SettingRow>
     </SettingsCard>
   );

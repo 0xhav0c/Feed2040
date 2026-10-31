@@ -18,7 +18,6 @@ import {
   BookmarkPlus,
   Save,
   Bell,
-  Brain,
 } from "lucide-react";
 import { toast } from "sonner";
 import { isSafeUrl } from "@/lib/utils/url-validator";
@@ -99,8 +98,6 @@ function FeedsContent() {
   const [filterTitle, setFilterTitle] = useState("");
 
   const [activeFilter, setActiveFilter] = useState<"" | "today" | "unread">("");
-  const [semanticMode, setSemanticMode] = useState(false);
-  const [semanticFallback, setSemanticFallback] = useState(false);
   const [todayCount, setTodayCount] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [markingAllRead, setMarkingAllRead] = useState(false);
@@ -144,25 +141,6 @@ function FeedsContent() {
       const reqId = ++requestIdRef.current;
       setLoading(true);
       try {
-        // Semantic mode: meaning-based search (falls back to keyword server-side).
-        if (semanticMode && q.trim()) {
-          const res = await fetch("/api/articles/semantic-search", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ q }),
-          });
-          const data = await res.json();
-          if (requestIdRef.current !== reqId) return;
-          if (res.ok) {
-            setArticles(data.data);
-            setTotalPages(1);
-            setTotal(data.data.length);
-            setSemanticFallback(!!data.fallback);
-          }
-          return;
-        }
-        setSemanticFallback(false);
-
         const params = new URLSearchParams({
           page: String(p),
           limit: "50",
@@ -197,7 +175,7 @@ function FeedsContent() {
         if (requestIdRef.current === reqId) setLoading(false);
       }
     },
-    [feedId, categoryId, tagId, saved, semanticMode]
+    [feedId, categoryId, tagId, saved]
   );
 
   useEffect(() => {
@@ -230,7 +208,7 @@ function FeedsContent() {
   // most recent request wins regardless of resolution order.
   useEffect(() => {
     fetchArticles(page, searchQuery, activeFilter);
-  }, [feedId, categoryId, tagId, saved, page, searchQuery, activeFilter, semanticMode, fetchArticles, reloadKey, unreadKey]);
+  }, [feedId, categoryId, tagId, saved, page, searchQuery, activeFilter, fetchArticles, reloadKey, unreadKey]);
 
   useEffect(() => {
     return () => {
@@ -314,33 +292,21 @@ function FeedsContent() {
   const handleMarkAllRead = useCallback(async () => {
     setMarkingAllRead(true);
     try {
-      let res: Response;
-      if (semanticMode && searchQuery.trim()) {
-        // Semantic results can't be re-derived server-side; mark exactly the
-        // articles on screen.
-        const ids = articlesRef.current.filter((a) => !a.isRead).map((a) => a.id);
-        res = await fetch("/api/articles/read", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ articleIds: ids }),
-        });
-      } else {
-        const body: Record<string, string> = {
-          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        };
-        if (feedId) body.feedId = feedId;
-        if (categoryId) body.categoryId = categoryId;
-        if (tagId) body.tagId = tagId;
-        if (saved) body.saved = "1";
-        if (searchQuery.trim()) body.q = searchQuery.trim();
-        if (activeFilter) body.filter = activeFilter;
+      const body: Record<string, string> = {
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+      if (feedId) body.feedId = feedId;
+      if (categoryId) body.categoryId = categoryId;
+      if (tagId) body.tagId = tagId;
+      if (saved) body.saved = "1";
+      if (searchQuery.trim()) body.q = searchQuery.trim();
+      if (activeFilter) body.filter = activeFilter;
 
-        res = await fetch("/api/articles/read-all", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-      }
+      const res = await fetch("/api/articles/read-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const data = await res.json();
       if (res.ok) {
         toast.success(`Marked ${data.data.marked ?? 0} articles as read`);
@@ -356,7 +322,7 @@ function FeedsContent() {
     } finally {
       setMarkingAllRead(false);
     }
-  }, [feedId, categoryId, tagId, saved, semanticMode, activeFilter, reload, searchQuery]);
+  }, [feedId, categoryId, tagId, saved, activeFilter, reload, searchQuery]);
 
   const [refreshProgress, setRefreshProgress] = useState<{
     current: number;
@@ -792,7 +758,7 @@ function FeedsContent() {
                     type="search"
                     value={searchInput}
                     onChange={(e) => handleSearchChange(e.target.value)}
-                    placeholder={semanticMode ? "Search by meaning…" : "Search articles  /"}
+                    placeholder="Search articles  /"
                     aria-label="Search articles"
                     className="h-9 bg-background pl-8 pr-8 text-[13.5px]"
                   />
@@ -806,26 +772,7 @@ function FeedsContent() {
                     </button>
                   )}
                 </div>
-                <button
-                  onClick={() => { setSemanticMode((v) => !v); setPage(1); }}
-                  title={semanticMode ? "Semantic search: on" : "Semantic search: off"}
-                  aria-label="Toggle semantic search"
-                  aria-pressed={semanticMode}
-                  className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors",
-                    semanticMode
-                      ? "border-primary/50 bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                >
-                  <Brain size={16} />
-                </button>
               </div>
-              {semanticMode && semanticFallback && searchQuery && (
-                <p className="text-[12px] text-amber-400">
-                  Embeddings unavailable — showing keyword results. Build the index in Settings › AI.
-                </p>
-              )}
             </div>
 
             {/* Save a URL (read-it-later) */}

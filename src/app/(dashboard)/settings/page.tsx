@@ -40,7 +40,7 @@ const SECTIONS: Section[] = [
   { id: "account", label: "Account", title: "Account", description: "Your profile, password and reading preferences.", icon: UserRound, group: "General" },
   { id: "feeds", label: "Feeds", title: "Feeds", description: "How often feeds refresh, how long articles are kept, and feeds that are failing.", icon: Rss, group: "General" },
   { id: "notifications", label: "Notifications", title: "Notifications", description: "Keyword alerts, browser notifications and Telegram.", icon: Bell, group: "General" },
-  { id: "ai", label: "AI provider", title: "AI provider", description: "The AI service behind summaries, Ask AI, briefings and semantic search.", icon: Sparkles, group: "AI" },
+  { id: "ai", label: "AI provider", title: "AI provider", description: "The AI service behind summaries, Ask AI, translation fallback and briefings.", icon: Sparkles, group: "AI" },
   { id: "briefing", label: "Daily briefing", title: "Daily briefing", description: "When briefings are written and where they're delivered.", icon: Newspaper, group: "AI" },
   { id: "data", label: "Import & export", title: "Import & export", description: "Bring feeds in from another reader or take a backup.", icon: ArrowDownUp, group: "Data" },
   { id: "fever", label: "Reader apps", title: "Reader apps", description: "Read Feed2040 from mobile and desktop RSS apps.", icon: Smartphone, group: "Data" },

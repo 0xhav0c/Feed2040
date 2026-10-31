@@ -12,7 +12,6 @@ export interface ChatOptions {
 
 export interface AIProvider {
   chat(options: ChatOptions): Promise<string | null>;
-  embed(model: string, input: string[]): Promise<number[][] | null>;
 }
 
 class OpenAIProvider implements AIProvider {
@@ -30,36 +29,17 @@ class OpenAIProvider implements AIProvider {
     });
     return response.choices[0]?.message?.content?.trim() || null;
   }
-
-  async embed(model: string, input: string[]): Promise<number[][] | null> {
-    try {
-      // The vector column is 1536-dim. text-embedding-3-* and Gemini embedding
-      // models default to larger vectors but can return 1536 when asked.
-      const shortenable = /text-embedding-3|gemini-embedding|embedding-001/i.test(model);
-      const res = await this.client.embeddings.create({
-        model,
-        input,
-        ...(shortenable && { dimensions: 1536 }),
-      });
-      return res.data.map((d) => d.embedding as number[]);
-    } catch (err) {
-      console.error("[AI] embeddings request failed:", err instanceof Error ? err.message : err);
-      return null;
-    }
-  }
 }
 
 export interface AIConfig {
   model: string;
   digestModel: string;
-  embeddingModel: string;
   language: string;
 }
 
 const DEFAULT_CONFIG: AIConfig = {
   model: process.env.OPENAI_MODEL || "gpt-4o-mini",
   digestModel: "gpt-4o",
-  embeddingModel: process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
   language: "en",
 };
 
@@ -73,7 +53,6 @@ export async function getAIConfig(userId?: string): Promise<AIConfig> {
     return {
       model: settings.model || DEFAULT_CONFIG.model,
       digestModel: settings.digestModel || DEFAULT_CONFIG.digestModel,
-      embeddingModel: settings.embeddingModel || DEFAULT_CONFIG.embeddingModel,
       language: settings.language || DEFAULT_CONFIG.language,
     };
   } catch {

@@ -12,7 +12,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const { articleId, articleIds } = await req.json();
 
-    // Bulk form: mark an explicit list (e.g. the semantic-search results on screen).
+    // Bulk form: mark an explicit list of article ids.
     if (Array.isArray(articleIds)) {
       const ids = articleIds.filter((id: unknown): id is string => typeof id === "string").slice(0, 1000);
       const owned = await prisma.article.findMany({
