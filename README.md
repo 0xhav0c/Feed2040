@@ -24,7 +24,7 @@ Feed2040 aggregates your RSS feeds, uses AI to summarize and prioritize articles
 - **Categories & Filters** — Organize feeds into categories. Filter briefings by topic.
 - **Bookmarks** — Save articles for later reading.
 - **Keyboard Shortcuts** — Navigate with `j`/`k`, open with `o`, bookmark with `b`.
-- **Dark Theme** — Modern dark UI built with shadcn/ui and Tailwind CSS.
+- **Dark & Light Themes** — Dark-first UI built with shadcn/ui and Tailwind CSS, with a light theme and ⌘K command palette.
 - **Multi-User** — Each user manages their own API keys, feeds, and Telegram bot independently.
 - **Self-Hosted** — Your data stays on your server. Deploy with a single `docker compose up`.
 
@@ -35,17 +35,23 @@ Feed2040 aggregates your RSS feeds, uses AI to summarize and prioritize articles
 ### Three-Panel Feed Reader
 ![Feed Reader](public/screenshots/feed-reader.png)
 
-### AI Summary & Reading
-![AI Summary](public/screenshots/ai-summary.png)
+### Light Theme
+![Feed Reader in the light theme](public/screenshots/feed-reader-light.png)
+
+### AI Summary
+![AI summary above an article](public/screenshots/ai-summary.png)
 
 ### Article Translation
-![Translate](public/screenshots/translate.png)
+![Choosing a translation language](public/screenshots/translate.png)
 
 ### AI-Powered Daily Briefing
 ![Daily Briefing](public/screenshots/daily-briefing.png)
 
-### AI Provider Settings
-![AI Settings](public/screenshots/ai-settings.png)
+### Overview
+![Overview with feed and reading stats](public/screenshots/overview.png)
+
+### Settings
+![Daily briefing settings](public/screenshots/settings.png)
 
 ---
 
