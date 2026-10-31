@@ -8,25 +8,40 @@
 
 # Feed2040
 
-**A self-hosted, AI-powered RSS reader with daily briefings, Telegram integration, and a modern three-panel interface.**
+**A self-hosted, AI-powered RSS reader with daily briefings, translation, Telegram delivery and a fast three-panel interface.**
 
-Feed2040 aggregates your RSS feeds, uses AI to summarize and prioritize articles, generates daily briefings, and delivers them to your Telegram — all running on your own server.
+Feed2040 collects your feeds, summarizes and ranks articles with any OpenAI-compatible model, writes a daily briefing, and sends alerts and briefings to Telegram or your browser — all on your own server.
 
 ---
 
 ## Features
 
-- **Three-Panel Reader** — Sidebar, article list, and reading pane. Click an article on the left, read it on the right. Just like email.
-- **AI Summarization** — Summarize any article with one click. Supports OpenAI, Anthropic, and local Ollama models.
-- **Daily Briefings** — Scheduled AI-generated digests that score articles by global importance, remove duplicates, and deliver a concise briefing.
-- **Telegram Bot** — Get briefings and keyword-based notifications delivered directly to Telegram.
-- **OPML Import/Export** — Migrate from any RSS reader. Import hundreds of feeds at once.
-- **Categories & Filters** — Organize feeds into categories. Filter briefings by topic.
-- **Bookmarks** — Save articles for later reading.
-- **Keyboard Shortcuts** — Navigate with `j`/`k`, open with `o`, bookmark with `b`.
-- **Dark & Light Themes** — Dark-first UI built with shadcn/ui and Tailwind CSS, with a light theme and ⌘K command palette.
-- **Multi-User** — Each user manages their own API keys, feeds, and Telegram bot independently.
-- **Self-Hosted** — Your data stays on your server. Deploy with a single `docker compose up`.
+**Reading**
+- **Three-panel reader** — sidebar, article list and a full-width reading pane, with reader mode, adjustable font size and read-aloud.
+- **Full text** — fetch the complete article for feeds that only publish excerpts (per feed).
+- **Translation** — translate any article into 12 languages; uses Google Translate and falls back to your AI model.
+- **Highlights** — highlight passages while reading and export them as Markdown (Obsidian-friendly).
+- **Library** — bookmarks plus saved links: keep any web page for later, also from a bookmarklet.
+- **Organize & find** — nested categories with colors and icons, tags, saved searches, Unread/Today filters and related articles.
+- **Share** — copy or download an article as Markdown or plain text, or use the system share sheet.
+- **Keyboard first** — ⌘K / Ctrl+K command palette and single-key shortcuts.
+
+**AI** (any OpenAI-compatible API: OpenAI, Ollama, OpenRouter, LiteLLM, …)
+- **Summaries & Ask AI** — summarize an article or ask questions about it.
+- **Daily briefings** — scheduled, importance-ranked briefings, optionally limited to certain categories.
+- **Suggestions** — tag and category suggestions for articles and feeds.
+
+**Alerts & delivery**
+- **Alert rules** — keyword rules that notify you and can also mark as read, bookmark or tag matching articles.
+- **Browser notifications** — web push on desktop and mobile (installable as a PWA).
+- **Telegram bot** — alerts, scheduled briefings and on-demand `/digest`.
+
+**Your data**
+- **Import & export** — OPML in and out, JSON backup, Markdown export of highlights.
+- **Reader apps** — sync with Reeder, Readrops, Fluent Reader, Read You and other Fever-API clients.
+- **Housekeeping** — feed health with retry, automatic article retention, overview of reading stats.
+- **Multi-user** — each user has their own feeds, AI key and Telegram bot; admins manage accounts and sign-ups.
+- **Dark & light themes**, responsive layout with a mobile tab bar, deploy with a single `docker compose up`.
 
 ---
 
@@ -121,36 +136,55 @@ No environment variables needed: after signing in, set them up in the app under 
 
 ## AI Providers
 
-Feed2040 supports multiple AI backends. Configure via **Settings → AI Provider**:
+Feed2040 talks to any **OpenAI-compatible** API. Set it up under **Settings → AI provider**: paste an API key, optionally an endpoint, then pick the models for summaries and briefings (the model list is loaded from your provider).
 
-| Provider | Best For | Cost |
-|----------|----------|------|
-| **Ollama** (local) | Privacy, no API costs | Free (requires GPU/CPU) |
-| **OpenAI** | High quality summaries | Pay per token |
-| **Anthropic** | Long-form analysis | Pay per token |
+| Provider | Endpoint | Notes |
+|----------|----------|-------|
+| **OpenAI** | leave empty | Pay per token |
+| **Ollama** (local) | `http://<ollama-host>:11434/v1` | Free, runs on your hardware; no API key needed |
+| **OpenRouter, LiteLLM, other proxies** | the proxy's `/v1` URL | Use Claude, Gemini, DeepSeek and others through one key |
 
-### Using Ollama (Local AI)
+### Using Ollama (local AI)
 
-1. Install [Ollama](https://ollama.ai)
-2. Pull a model: `ollama pull gemma3:12b`
-3. In Settings, select "Ollama" and enter your Ollama URL
+1. Install [Ollama](https://ollama.ai) and pull a model: `ollama pull gemma3:12b`
+2. In **Settings → AI provider**, set the endpoint to `http://<your-host-ip>:11434/v1`
+3. Enter the model name (e.g. `gemma3:12b`) and press **Test connection**
 
-> **Docker users:** Use `http://host.docker.internal:11434` or your host IP as the Ollama URL.
+> **Docker users:** the app runs in a container, so use the host's LAN IP rather than `localhost`.
 
 ---
 
 ## Telegram Integration
 
-1. Create a bot via [@BotFather](https://t.me/BotFather) on Telegram
-2. Go to **Settings → Telegram** and enter your bot token
-3. Send `/start` to your bot
-4. Configure notification rules and briefing schedules
+1. Create a bot with [@BotFather](https://t.me/BotFather) (`/newbot`) and copy its token
+2. In **Settings → Notifications → Telegram**, paste the token and press **Create link code**
+3. Send the shown `/start …` message to your bot — the account is now linked
+4. Choose delivery times under **Settings → Daily briefing → Send to Telegram**
+5. Optionally tick **Send a Telegram message too** on your alert rules
 
-### Telegram Features
+Bot commands: `/digest` (briefing now), `/status`, `/stop` (unlink), `/help`.
 
-- Receive daily briefings at scheduled times
-- Get notifications for articles matching keywords
-- Customizable notification rules per category
+---
+
+## Reader Apps (Fever API)
+
+1. In **Settings → Reader apps**, set a Fever password (separate from your login password)
+2. In your app, choose **Fever** as the service and enter the server URL shown there (`https://your-host/api/fever`), your username and the Fever password
+
+---
+
+## Keyboard Shortcuts
+
+| Key | Action | Key | Action |
+|-----|--------|-----|--------|
+| `j` / `k` | Next / previous article | `r` | Refresh feeds |
+| `o` | Open original | `Shift+A` | Mark all read in view |
+| `b` | Bookmark | `n` / `p` | Next / previous page |
+| `m` | Toggle read | `/` | Focus search |
+| `s` | AI summary | `Esc` | Close article |
+| `t` | Translate | `?` | Show shortcuts |
+
+`⌘K` / `Ctrl+K` opens the command palette to jump to any page, category or feed.
 
 ---
 
@@ -164,15 +198,15 @@ Feed2040 supports multiple AI backends. Configure via **Settings → AI Provider
 │   :5432   │    :6379     │      :3000           │
 │           │              │                      │
 │  Articles │  Cache       │  ┌─ App Router       │
-│  Feeds    │  Sessions    │  ├─ API Routes       │
+│  Feeds    │  Rate limits │  ├─ API Routes       │
 │  Users    │              │  ├─ Cron Worker       │
-│  Digests  │              │  └─ Telegram Poller   │
+│  Digests  │  Locks       │  └─ Telegram Poller   │
 └──────────┴──────────────┴──────────────────────┘
                                     │
-                          ┌─────────┼─────────┐
-                          ▼         ▼         ▼
-                       Ollama   OpenAI   Anthropic
-                       (local)  (cloud)   (cloud)
+                          ┌─────────┼──────────────┐
+                          ▼         ▼              ▼
+                       Ollama    OpenAI    OpenAI-compatible
+                       (local)   (cloud)   proxy (LiteLLM, …)
 ```
 
 ### Tech Stack
@@ -180,10 +214,10 @@ Feed2040 supports multiple AI backends. Configure via **Settings → AI Provider
 - **Framework:** Next.js 16 (App Router, React 19)
 - **Database:** PostgreSQL 16 + Prisma ORM
 - **Cache:** Redis 7
-- **UI:** shadcn/ui, Tailwind CSS, GSAP animations
-- **Auth:** NextAuth.js (credentials)
-- **AI:** OpenAI, Anthropic, Ollama
-- **Notifications:** Telegraf (Telegram Bot API)
+- **UI:** shadcn/ui (Base UI), Tailwind CSS 4, Inter, Lucide icons
+- **Auth:** Auth.js / NextAuth v5 (credentials, JWT sessions)
+- **AI:** OpenAI SDK against any OpenAI-compatible endpoint
+- **Notifications:** Telegraf (Telegram Bot API), Web Push
 
 ---
 
@@ -191,15 +225,12 @@ Feed2040 supports multiple AI backends. Configure via **Settings → AI Provider
 
 ### Local Setup (without Docker)
 
+You need PostgreSQL 16 with the `pgvector` extension available (the `pgvector/pgvector:pg16` image works) and Redis 7. Put `DATABASE_URL`, `REDIS_URL`, `NEXTAUTH_SECRET` and `CRON_SECRET` in `.env`, then:
+
 ```bash
-# Install dependencies
 npm install
-
-# Set up database
 npx prisma generate
-npx prisma db push
-
-# Start dev server
+node --env-file=.env scripts/migrate.js   # apply database migrations
 npm run dev
 ```
 
@@ -221,16 +252,19 @@ src/
 │   ├── (dashboard)/     # Main app pages
 │   │   ├── feeds/       # Three-panel RSS reader
 │   │   ├── briefing/    # Daily briefing with history
-│   │   ├── bookmarks/   # Saved articles
+│   │   ├── bookmarks/   # Library: bookmarks and saved links
 │   │   ├── categories/  # Category management
-│   │   └── settings/    # App configuration
+│   │   ├── dashboard/   # Overview and stats
+│   │   └── settings/    # Settings sections
 │   └── api/             # API routes
 ├── components/
-│   ├── feed/            # Article cards, reading panel
-│   ├── layout/          # Sidebar, header
+│   ├── feed/            # Article list, reading panel, briefing view
+│   ├── layout/          # Sidebar, command palette, header
+│   ├── settings/        # Settings sections
 │   └── ui/              # shadcn/ui components
 ├── lib/
-│   ├── ai/              # AI provider abstraction
+│   ├── ai/              # AI provider, summaries, briefings
+│   ├── rss/             # Fetching, parsing, alerts
 │   ├── telegram/        # Bot, digest builder
 │   └── hooks/           # Custom React hooks
 └── types/               # TypeScript definitions
