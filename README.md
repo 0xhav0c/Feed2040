@@ -108,20 +108,14 @@ That's it. Open [http://localhost:3000](http://localhost:3000) and create your a
 | `NEXTAUTH_SECRET` | — | **Required.** Generate with `openssl rand -base64 32` |
 | `REFRESH_INTERVAL_MINUTES` | `15` | How often feeds are refreshed |
 | `CRON_SECRET` | — | **Required.** Generate with `openssl rand -hex 24` |
-| `ENCRYPTION_SALT` | — | Optional. Custom salt for API key encryption |
+| `ENCRYPTION_SALT` | — | Optional. Custom salt for API key encryption. Set it before saving any keys — changing it later makes saved keys unreadable |
+| `VAPID_SUBJECT` | `mailto:admin@feed2040.local` | Optional. Contact for browser push (`mailto:` or `https:`) |
 
-### Optional Services
+### AI & Telegram
 
-Each user configures their own API keys through the **Settings UI** after login. Alternatively, instance-wide defaults can be set via environment variables:
+No environment variables needed: after signing in, set them up in the app under **Settings → AI provider** (API key, endpoint, models) and **Settings → Notifications** (Telegram bot).
 
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key (instance-wide fallback) |
-| `OPENAI_BASE_URL` | OpenAI-compatible endpoint for that key, e.g. a proxy or `http://ollama:11434/v1` |
-| `ANTHROPIC_API_KEY` | Anthropic API key (instance-wide fallback) |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token (instance-wide fallback) |
-
-> **Multi-user:** Each user can set their own API keys in Settings. Per-user keys take priority over instance-wide defaults.
+> **Multi-user:** Each user sets their own API keys and Telegram bot in Settings.
 
 ---
 

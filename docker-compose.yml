@@ -58,14 +58,8 @@ services:
       REDIS_URL: "redis://redis:6379"
       CRON_SECRET: "${CRON_SECRET}"
       REFRESH_INTERVAL_MINUTES: "${REFRESH_INTERVAL_MINUTES:-15}"
-      # Optional. Empty means "not set"; per-user keys in Settings take precedence.
+      # Optional; empty keeps the built-in default. AI and Telegram are set in the app.
       ENCRYPTION_SALT: "${ENCRYPTION_SALT:-}"
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-}"
-      OPENAI_MODEL: "${OPENAI_MODEL:-}"
-      OPENAI_EMBEDDING_MODEL: "${OPENAI_EMBEDDING_MODEL:-}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
       VAPID_SUBJECT: "${VAPID_SUBJECT:-}"
     volumes:
       - ./backups:/app/backups
