@@ -1,14 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { SectionTitle } from "@/components/settings/SectionTitle";
+import { SettingRow, SettingsCard, StatusBadge } from "@/components/settings/primitives";
 import {
   Dialog,
   DialogContent,
@@ -17,13 +15,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Users,
   Shield,
   ShieldOff,
   Trash2,
   KeyRound,
   Loader2,
-  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -178,38 +174,27 @@ export function UsersAdminTab({ currentUserId }: { currentUserId: string }) {
   }
 
   return (
-    <div className="space-y-8">
-      <SectionTitle
-        icon={Users}
-        title="User Management"
-        description="Manage users, roles, and registration settings"
-      />
+    <div className="space-y-6">
+      <SettingsCard title="Sign-ups" description="Saved as soon as you change it.">
+        <SettingRow
+          label="Allow new accounts"
+          description="When on, anyone who can reach this server can register from the login page."
+          htmlFor="admin-registration"
+        >
+          <Switch
+            id="admin-registration"
+            checked={registrationEnabled}
+            onCheckedChange={(v: boolean) => handleRegistrationToggle(v)}
+            disabled={toggling}
+          />
+        </SettingRow>
+      </SettingsCard>
 
-      {/* Registration Toggle */}
-      <div className="flex items-center justify-between rounded-xl border border-border bg-card p-4">
-        <div className="flex items-center gap-3">
-          <UserPlus size={18} className="text-muted-foreground" />
-          <div>
-            <p className="text-sm font-medium">Open Registration</p>
-            <p className="text-xs text-muted-foreground">
-              Allow new users to create accounts
-            </p>
-          </div>
-        </div>
-        <Switch
-          checked={registrationEnabled}
-          onCheckedChange={handleRegistrationToggle}
-          disabled={toggling}
-        />
-      </div>
-
-      <Separator />
-
-      {/* Users List */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-medium text-muted-foreground">
-          {users.length} user{users.length !== 1 ? "s" : ""}
-        </h4>
+      <SettingsCard
+        title="Accounts"
+        description={`${users.length} user${users.length !== 1 ? "s" : ""} on this server.`}
+      >
+      <div className="py-4">
 
         {loading ? (
           <div className="space-y-3">
@@ -218,11 +203,11 @@ export function UsersAdminTab({ currentUserId }: { currentUserId: string }) {
             ))}
           </div>
         ) : (
-          <div className="space-y-2">
+          <ul className="divide-y divide-border">
             {users.map((user) => (
-              <div
+              <li
                 key={user.id}
-                className="flex items-center justify-between rounded-xl border border-border bg-card p-4"
+                className="flex flex-wrap items-center justify-between gap-3 py-3"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
@@ -233,21 +218,14 @@ export function UsersAdminTab({ currentUserId }: { currentUserId: string }) {
                       <p className="text-sm font-medium truncate">
                         {user.name || user.username}
                       </p>
-                      <Badge
-                        variant="secondary"
-                        className={
-                          user.role === "admin"
-                            ? "bg-amber-500/10 text-amber-600 text-[10px] px-1.5"
-                            : "text-[10px] px-1.5"
-                        }
-                      >
-                        {user.role}
-                      </Badge>
+                      <StatusBadge tone={user.role === "admin" ? "info" : "neutral"}>
+                        {user.role === "admin" ? "Admin" : "User"}
+                      </StatusBadge>
                       {user.id === currentUserId && (
-                        <span className="text-[10px] text-muted-foreground">(you)</span>
+                        <span className="text-xs text-muted-foreground">(you)</span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-[13px] text-muted-foreground">
                       @{user.username} &middot; {user.feedCount} feeds &middot;{" "}
                       {new Date(user.createdAt).toLocaleDateString()}
                     </p>
@@ -255,48 +233,38 @@ export function UsersAdminTab({ currentUserId }: { currentUserId: string }) {
                 </div>
 
                 {user.id !== currentUserId && (
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      title={user.role === "admin" ? "Demote to user" : "Promote to admin"}
-                      onClick={() => setRoleTarget(user)}
-                    >
-                      {user.role === "admin" ? (
-                        <ShieldOff size={14} />
-                      ) : (
-                        <Shield size={14} />
-                      )}
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => setRoleTarget(user)}>
+                      {user.role === "admin" ? <ShieldOff aria-hidden /> : <Shield aria-hidden />}
+                      {user.role === "admin" ? "Make user" : "Make admin"}
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 w-8 p-0"
-                      title="Reset password"
                       onClick={() => {
                         setResetTarget(user);
                         setNewPassword("");
                       }}
                     >
-                      <KeyRound size={14} />
+                      <KeyRound aria-hidden /> Reset password
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                      title="Delete user"
                       onClick={() => setDeleteTarget(user)}
+                      aria-label={`Delete ${user.username}`}
+                      className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 aria-hidden /> Delete
                     </Button>
                   </div>
                 )}
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </div>
+      </SettingsCard>
 
       {/* Delete Confirmation */}
       <ConfirmDialog
