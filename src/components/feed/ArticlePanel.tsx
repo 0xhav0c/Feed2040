@@ -502,7 +502,10 @@ export const ArticlePanel = memo(function ArticlePanel({
       if (currentIdRef.current !== id) return;
       if (res.ok && data.data?.translatedHtml) {
         setTranslatedContent(data.data.translatedHtml);
-        toast.success("Article translated");
+        if (data.data.partial) toast.warning("Partly translated — some sections are still in the original language");
+        else if (data.data.engine === "ai" || data.data.engine === "mixed")
+          toast.success("Translated with your AI model", { description: "Google Translate is busy for this server right now." });
+        else toast.success("Article translated");
       } else {
         toast.error(data.error || "Translation failed");
       }
