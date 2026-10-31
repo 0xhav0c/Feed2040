@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { embedTexts, articleEmbedInput, toVectorLiteral } from "@/lib/ai/embeddings";
+import { getAIConfig } from "@/lib/ai/provider";
 
 const BATCH = 100;
 
@@ -66,7 +67,10 @@ export async function POST(): Promise<NextResponse> {
 
     if (!vectors) {
       return NextResponse.json(
-        { error: "Embeddings are not available with your current AI provider.", available: false },
+        {
+          error: `The embedding model “${(await getAIConfig(userId)).embeddingModel}” didn't return usable vectors. Choose an embedding model (e.g. text-embedding-3-small) under Settings → AI provider → Embeddings.`,
+          available: false,
+        },
         { status: 422 }
       );
     }

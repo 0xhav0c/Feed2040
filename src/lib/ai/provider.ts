@@ -33,7 +33,14 @@ class OpenAIProvider implements AIProvider {
 
   async embed(model: string, input: string[]): Promise<number[][] | null> {
     try {
-      const res = await this.client.embeddings.create({ model, input });
+      // The vector column is 1536-dim. text-embedding-3-* and Gemini embedding
+      // models default to larger vectors but can return 1536 when asked.
+      const shortenable = /text-embedding-3|gemini-embedding|embedding-001/i.test(model);
+      const res = await this.client.embeddings.create({
+        model,
+        input,
+        ...(shortenable && { dimensions: 1536 }),
+      });
       return res.data.map((d) => d.embedding as number[]);
     } catch (err) {
       console.error("[AI] embeddings request failed:", err instanceof Error ? err.message : err);

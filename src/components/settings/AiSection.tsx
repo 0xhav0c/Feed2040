@@ -271,6 +271,8 @@ function ProviderCard({
   );
 }
 
+const looksLikeEmbedding = (m: string) => /embed|bge|e5-|gte-|nomic|minilm/i.test(m);
+
 function ModelField({
   id,
   value,
@@ -331,6 +333,7 @@ function ModelsCard({
 }) {
   const uid = useId();
   const [saving, setSaving] = useState(false);
+  const embeddingModels = models.filter(looksLikeEmbedding);
   const keys = ["model", "digestModel", "embeddingModel", "language"] as const;
   const dirty = keys.some((k) => draft[k].trim() !== saved[k]);
   const empty = !draft.model.trim() || !draft.digestModel.trim() || !draft.embeddingModel.trim();
@@ -431,9 +434,14 @@ function ModelsCard({
           id={`${uid}-embed`}
           value={draft.embeddingModel}
           onChange={(v) => setDraft({ ...draft, embeddingModel: v })}
-          models={models}
+          models={embeddingModels.length ? embeddingModels : models}
           placeholder={DEFAULTS.embeddingModel}
         />
+        {embeddingModels.length > 0 && !looksLikeEmbedding(draft.embeddingModel) && (
+          <p className="mt-1.5 text-[13px] text-amber-700 dark:text-amber-400">
+            This looks like a chat model. Pick an embedding model, e.g. {embeddingModels.slice(0, 2).join(" or ")}.
+          </p>
+        )}
       </SettingRow>
     </SettingsCard>
   );
@@ -464,7 +472,7 @@ function SemanticIndexCard() {
         const res = await fetch("/api/articles/embed-backfill", { method: "POST" });
         const data = await res.json();
         if (!res.ok) {
-          if (res.status === 422) toast.error("Your AI provider doesn't support embeddings.");
+          if (res.status === 422) toast.error(data.error || "Your AI provider doesn't return embeddings.", { duration: 10000 });
           else if (res.status === 429) toast.message("Rate limited — paused. Click again to continue.");
           else toast.error(data.error || "Indexing failed");
           break;

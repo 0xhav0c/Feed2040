@@ -229,11 +229,14 @@ function TelegramDeliveryCard({ active, onNavigate }: { active: boolean; onNavig
   const [saved, setSaved] = useState<TelegramState | null>(null);
   const [draft, setDraft] = useState<TelegramState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [briefingTimes, setBriefingTimes] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/settings/telegram");
+      const [res, aiRes] = await Promise.all([fetch("/api/settings/telegram"), fetch("/api/settings/ai")]);
       const d = await res.json();
+      const ai = await aiRes.json().catch(() => ({}));
+      setBriefingTimes(ai.data?.briefingEnabled ? ai.data?.briefingTimes ?? [] : []);
       const s: TelegramState = {
         connected: !!(res.ok && d.data?.isActive),
         times: d.data?.scheduleTimes ?? [],
@@ -320,6 +323,16 @@ function TelegramDeliveryCard({ active, onNavigate }: { active: boolean; onNavig
           onChange={(t) => setDraft({ ...draft, times: t })}
           emptyText="No delivery times — nothing is sent"
         />
+        {draft.times.length === 0 && briefingTimes.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2.5"
+            onClick={() => setDraft({ ...draft, times: [...briefingTimes].sort() })}
+          >
+            Use the briefing times ({[...briefingTimes].sort().join(", ")})
+          </Button>
+        )}
       </SettingRow>
       <SettingRow label="Time zone" htmlFor={`${uid}-tgtz`}>
         <Select
