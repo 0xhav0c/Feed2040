@@ -605,11 +605,11 @@ function FeedsContent() {
         if (selectedArticle) handleToggleRead(selectedArticle.id);
       },
       s: () => {
-        const btn = document.querySelector('[title="AI Summarize"]') as HTMLButtonElement | null;
+        const btn = document.querySelector('[data-action="summarize"]') as HTMLButtonElement | null;
         btn?.click();
       },
       t: () => {
-        const btn = document.querySelector('[title="Translate article"]') as HTMLButtonElement | null;
+        const btn = document.querySelector('[data-action="translate"]') as HTMLButtonElement | null;
         btn?.click();
       },
       "/": () => {

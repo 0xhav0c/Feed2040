@@ -5,6 +5,7 @@ import DOMPurify from "isomorphic-dompurify";
 import { marked } from "marked";
 import { cn } from "@/lib/utils";
 import {
+  Check,
   ExternalLink,
   Bookmark,
   BookmarkCheck,
@@ -223,6 +224,7 @@ export const ArticlePanel = memo(function ArticlePanel({
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [translateLang, setTranslateLang] = useState("tr");
   const [showLangPicker, setShowLangPicker] = useState(false);
+  const translateLabel = TRANSLATE_LANGUAGES.find((l) => l.value === translateLang)?.label ?? translateLang;
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [copied, setCopied] = useState(false);
   const [relatedArticles, setRelatedArticles] = useState<
@@ -483,9 +485,10 @@ export const ArticlePanel = memo(function ArticlePanel({
     [article, askLoading]
   );
 
-  const handleTranslate = useCallback(async () => {
+  const handleTranslate = useCallback(async (lang?: string) => {
     const content = fullContent || article?.content || article?.summary;
     if (!content || !article) return;
+    const targetLang = lang ?? translateLang;
     setTranslating(true);
     setShowLangPicker(false);
     const id = article.id;
@@ -493,7 +496,7 @@ export const ArticlePanel = memo(function ArticlePanel({
       const res = await fetch("/api/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ html: content, targetLang: translateLang }),
+        body: JSON.stringify({ html: content, targetLang }),
       });
       const data = await res.json();
       if (currentIdRef.current !== id) return;
@@ -793,6 +796,17 @@ export const ArticlePanel = memo(function ArticlePanel({
     setShowShareMenu(false);
   }, [getArticleMarkdown, copyToClipboard]);
 
+  const canNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const handleNativeShare = useCallback(async () => {
+    setShowShareMenu(false);
+    if (!article) return;
+    try {
+      await navigator.share({ title: article.title, url: isSafeUrl(article.url) ? article.url : undefined });
+    } catch {
+      /* dismissed */
+    }
+  }, [article]);
+
   const handleCopyLink = useCallback(async () => {
     if (!article?.url) return;
     const ok = await copyToClipboard(article.url);
@@ -944,12 +958,13 @@ export const ArticlePanel = memo(function ArticlePanel({
       <div className="relative flex h-full flex-col">
         {/* Toolbar: tools left, original/close right */}
         <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border bg-background/95 px-3 py-1.5 backdrop-blur-sm md:px-4">
-          <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto [&_[data-slot=button]]:size-9 [&_[data-slot=button]]:rounded-lg [&_[data-slot=button]_svg]:size-[17px]">
+          <div className="flex min-w-0 flex-wrap items-center gap-0.5 [&_[data-slot=button]]:size-9 [&_[data-slot=button]]:rounded-lg [&_[data-slot=button]_svg]:size-[17px]">
             <Button
               variant="ghost"
               size="icon-sm"
               onClick={handleAiSummarize}
               disabled={loadingAiSummary}
+              data-action="summarize"
               title="AI Summarize"
               aria-label="Summarize with AI"
             >
@@ -968,8 +983,9 @@ export const ArticlePanel = memo(function ArticlePanel({
                     variant="ghost"
                     size="icon-sm"
                     onClick={() => setTranslatedContent(null)}
-                    title="Show original"
-                    aria-label="Show original"
+                    data-action="translate"
+                    title="Show original (t)"
+                    aria-label="Show original text"
                     className="bg-primary/10 text-primary"
                   >
                     <Undo2 size={15} />
@@ -978,10 +994,11 @@ export const ArticlePanel = memo(function ArticlePanel({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    onClick={handleTranslate}
+                    onClick={() => handleTranslate()}
                     disabled={translating}
-                    title="Translate article"
-                    aria-label="Translate article"
+                    data-action="translate"
+                    title={`Translate to ${translateLabel} (t)`}
+                    aria-label={`Translate article to ${translateLabel}`}
                   >
                     {translating ? (
                       <Loader2 size={15} className="animate-spin text-primary" />
@@ -991,31 +1008,48 @@ export const ArticlePanel = memo(function ArticlePanel({
                   </Button>
                 )}
                 <button
+                  type="button"
                   onClick={() => setShowLangPicker((v) => !v)}
-                  className="-ml-1 flex h-9 w-4 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-                  title="Select language"
-                  aria-label="Select translation language"
+                  className={cn(
+                    "-ml-0.5 flex h-9 items-center gap-0.5 rounded-lg px-1.5 text-[11px] font-medium uppercase text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                    showLangPicker && "bg-muted text-foreground"
+                  )}
+                  title="Choose translation language"
+                  aria-label={`Translation language: ${translateLabel}. Change`}
+                  aria-haspopup="menu"
+                  aria-expanded={showLangPicker}
                 >
-                  <ChevronDown size={10} />
+                  {translateLang}
+                  <ChevronDown size={12} aria-hidden />
                 </button>
               </div>
 
               {showLangPicker && (
-                <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-xl border border-border bg-popover p-1 shadow-lg">
+                <div
+                  role="menu"
+                  aria-label="Translate to"
+                  className="absolute left-0 top-full z-50 mt-1 max-h-[min(60vh,420px)] min-w-[180px] overflow-y-auto rounded-xl border border-border bg-popover p-1 shadow-lg"
+                >
+                  <p className="px-3 pb-1 pt-1.5 text-[11.5px] font-medium text-muted-foreground">Translate to</p>
                   {TRANSLATE_LANGUAGES.map((lang) => (
                     <button
                       key={lang.value}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={translateLang === lang.value}
                       onClick={() => {
                         setTranslateLang(lang.value);
                         localStorage.setItem("translateLanguage", lang.value);
                         setShowLangPicker(false);
+                        handleTranslate(lang.value);
                       }}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-muted",
-                        translateLang === lang.value && "bg-primary/10 text-primary font-medium"
+                        "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-left text-sm text-popover-foreground transition-colors hover:bg-muted",
+                        translateLang === lang.value && "font-medium text-primary"
                       )}
                     >
                       {lang.label}
+                      {translateLang === lang.value && <Check size={14} aria-hidden />}
                     </button>
                   ))}
                 </div>
@@ -1118,15 +1152,31 @@ export const ArticlePanel = memo(function ArticlePanel({
                 onClick={() => setShowShareMenu((s) => !s)}
                 title="Share / Export"
                 aria-label="Share or export article"
+                aria-haspopup="menu"
+                aria-expanded={showShareMenu}
                 className={cn(showShareMenu && "bg-primary/10 text-primary")}
               >
                 <Share2 size={15} />
               </Button>
               {showShareMenu && (
                 <div
+                  role="menu"
+                  aria-label="Share or export"
                   className="absolute right-0 top-full mt-1 z-50 w-56 rounded-xl border border-border bg-popover p-1.5 shadow-xl animate-in fade-in slide-in-from-top-1"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
+                  {canNativeShare && (
+                    <>
+                      <button
+                        onClick={handleNativeShare}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-popover-foreground hover:bg-accent transition-colors"
+                      >
+                        <Share2 size={14} />
+                        Share…
+                      </button>
+                      <div className="my-1 border-t border-border" />
+                    </>
+                  )}
                   <button
                     onClick={handleCopyMarkdown}
                     className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-popover-foreground hover:bg-accent transition-colors"
